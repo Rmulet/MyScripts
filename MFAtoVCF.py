@@ -6,36 +6,46 @@
 import argparse
 import subprocess
 import re
+import os
 
 #######################
 ## PARSING ARGUMENTS ##
 #######################
 
-parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using SNP-sites')
+parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
 parser.add_argument('-i','--input',type=str,required=True,help="Input file, in MFA format")
 parser.add_argument('-o','--output',type=str,default="output.vcf",help="Output file, in VCF format")
-parser.add_argument('-s','--start',type=int,default=10000,help="Window size for metrics calculation (default 10000)")
-parser.add_argument('-c','--chrom',default="22",help="Step size for metrics calculation (default 0)")
+parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")
 
 args = parser.parse_args()
+
+############################
+## INITIALIZING VARIABLES ##
+############################
+
+# VCF MANIPULATION:
+trigger = 0
+counter = 0
+templines = ""
+totalrows = ""
+# VCF FILE HEADER:
+header = ""
+version = ""
+chrom = args.chrom
+seqlength = 0
 
 #####################################
 ## CREATING VCF FILES BY SEQ PAIRS ##
 #####################################
 
-counter = 0
-header = ""
-temp = ""
-total = 0
-out = open(args.output,'w') # Open the final output file. 
 with open(args.input,'r') as file: 
 	for line in file:
-		if line[0]==">": # Also: if "human" is in line
-			counter+=1
-			print (counter)
-		if counter==3:
+		if line[0]==">":
+			trigger+=1
+			print (trigger)
+		if trigger==3:
 			tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
-			tfile.write(temp) # Writes the temp variable in a .fasta file
+			tfile.write(templines) # Writes the temp variable in a .fasta file
 			tfile.close()
 			subprocess.call(['snp-sites','-v','-o','tempout.vcf','tempin.fasta']) # Calls snp-sites and generates a VCF output
 			
@@ -44,18 +54,35 @@ with open(args.input,'r') as file:
 				for row in tempvcf:
 					length = re.search(r'length=(\d+)>',row)
 					if length: 
-						print(length.group(1))
-						total = total + int(length.group(1))
+						seqlength = seqlength + int(length.group(1))
 					if row[0]!= "#":
 						rsplit = row.split()
-						pos = int(header) + int(rsplit[1]) -1 # Arithmetical sum!!! We 
+						pos = int(header) + int(rsplit[1]) -1 # Arithmetical sum!!! We subtract one because it's a 1-based system
 						newrow = args.chrom + '\t' + str(pos) + '\t' + '\t'.join(rsplit[2:]) + '\n'
-						print(newrow)
-						out.write(newrow) # Appends the temporal VCF to the final output
-						counter=1 # Sets the counter to 1 again
+						totalrows = totalrows + newrow
+						trigger=1 # Sets the trigger to 1 again
+						
+			templines = "" # Resets the templines variable to empty
+			counter+=1
 
-			temp = "" # Resets the temp variable to empty
-		if counter == 1:
+		if trigger == 1: # Stores the length of every aligned region
 			match = re.search(r'(chr\d\d?:)(\d+)-',line)	
 			if match: header = match.group(2)
-		temp=temp+line 		
+
+		templines=templines+line 		
+
+#################################
+## CREATING THE FINAL VCF FILE ##
+#################################
+
+out = open(args.output,'w') # Open the final output file. 
+out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the same version (but it can be modified)
+out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,seqlength))
+out.write(totalrows)
+out.close()
+
+# Deleting temporal files required for SNP-sites
+os.remove("tempin.fasta")
+os.remove("tempout.vcf")
+
+print("Execution complete. %d FASTA pairs processed." %counter)
