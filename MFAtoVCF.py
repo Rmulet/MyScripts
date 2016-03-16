@@ -1,8 +1,11 @@
-#!usr/bin/python
+#!/usr/bin/env python3
 
-# This script...
-# ADDITIONAL DESCRIPTION: The tool SNP-sites has to be in the same folder
-# It is advised to executed this tool on Python3.
+# This script converts multi-FASTA alignments (.mfa) files structured as pairs of aligned sequences,
+# each of which covers a region of a chromosome. Since the data from the 1000 GP is divided into chromosomes, 
+# it is also convenient to have the mouse-human alignments as several VCFs for their subsequent merging.
+
+# WARNING: The tool SNP-sites and all required inputs have to be in the same folder
+# WARNING: It is advised to executed this tool on Python3.
 
 import argparse
 import subprocess
@@ -69,7 +72,7 @@ with open(args.input,'r') as file:
 			counter+=1
 
 		if trigger == 1: # Stores the length of every aligned region
-			match = re.search(r'(chr\d\d?:)(\d+)-',line)	
+			match = re.search(r'(chr\d+:)(\d+)-',line)	# I've replaced \d\d with \d+
 			if match: header = match.group(2)
 
 		templines=templines+line
