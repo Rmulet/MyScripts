@@ -2,6 +2,7 @@
 
 # This script...
 # ADDITIONAL DESCRIPTION: The tool SNP-sites has to be in the same folder
+# It is advised to executed this tool on Python3.
 
 import argparse
 import subprocess
@@ -34,6 +35,19 @@ version = ""
 chrom = args.chrom
 seqlength = 0
 
+def vcfprocess(seqlength,totalrows):
+	with open("tempout.vcf") as tempvcf: # Opens the VCF output
+		for row in tempvcf:
+			length = re.search(r'length=(\d+)>',row)
+			if length: 
+				seqlength = seqlength + int(length.group(1))
+			if row[0]!= "#":
+				rsplit = row.split()
+				pos = int(header) + int(rsplit[1]) -1 # Arithmetical sum!!! We subtract one because it's a 1-based system
+				newrow = '\n' + chrom + '\t' + str(pos) + '\t' + '\t'.join(rsplit[2:]) 
+				totalrows = totalrows + newrow					
+	return(seqlength,totalrows)
+
 #####################################
 ## CREATING VCF FILES BY SEQ PAIRS ##
 #####################################
@@ -42,7 +56,6 @@ with open(args.input,'r') as file:
 	for line in file:
 		if line[0]==">":
 			trigger+=1
-			print (trigger)
 		if trigger==3:
 			tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
 			tfile.write(templines) # Writes the temp variable in a .fasta file
@@ -50,18 +63,8 @@ with open(args.input,'r') as file:
 			subprocess.call(['snp-sites','-v','-o','tempout.vcf','tempin.fasta']) # Calls snp-sites and generates a VCF output
 			
 			# MANIPULATE VCF FILE
-			with open("tempout.vcf") as tempvcf: # Opens the VCF output
-				for row in tempvcf:
-					length = re.search(r'length=(\d+)>',row)
-					if length: 
-						seqlength = seqlength + int(length.group(1))
-					if row[0]!= "#":
-						rsplit = row.split()
-						pos = int(header) + int(rsplit[1]) -1 # Arithmetical sum!!! We subtract one because it's a 1-based system
-						newrow = args.chrom + '\t' + str(pos) + '\t' + '\t'.join(rsplit[2:]) + '\n'
-						totalrows = totalrows + newrow
-						trigger=1 # Sets the trigger to 1 again
-						
+			seqlength,totalrows = vcfprocess(seqlength,totalrows)
+			trigger=1 # Sets the trigger to 1 again					
 			templines = "" # Resets the templines variable to empty
 			counter+=1
 
@@ -69,7 +72,11 @@ with open(args.input,'r') as file:
 			match = re.search(r'(chr\d\d?:)(\d+)-',line)	
 			if match: header = match.group(2)
 
-		templines=templines+line 		
+		templines=templines+line
+ 	
+	seqlength,totalrows = vcfprocess(seqlength,totalrows)
+	counter+=1	
+	templines = ""
 
 #################################
 ## CREATING THE FINAL VCF FILE ##
@@ -78,11 +85,11 @@ with open(args.input,'r') as file:
 out = open(args.output,'w') # Open the final output file. 
 out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the same version (but it can be modified)
 out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,seqlength))
+out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHuman\tMouse')
 out.write(totalrows)
-out.close()
-
 # Deleting temporal files required for SNP-sites
 os.remove("tempin.fasta")
 os.remove("tempout.vcf")
 
 print("Execution complete. %d FASTA pairs processed." %counter)
+exit()
