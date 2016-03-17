@@ -1,0 +1,7 @@
+##fileformat=VCFv4.1
+##contig=<ID=1,length=73>
+##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	Human	Mouse
+1	11	.	C	A	.	.	.	GT	0	1
+1	28	.	A	C	.	.	.	GT	0	1
+1	36	.	T	C	.	.	.	GT	0	1

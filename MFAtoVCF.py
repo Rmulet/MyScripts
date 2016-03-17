@@ -39,6 +39,10 @@ chrom = args.chrom
 seqlength = 0
 
 def vcfprocess(seqlength,totalrows):
+	tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
+	tfile.write(templines) # Writes the temp variable in a .fasta file
+	tfile.close()
+	subprocess.call(['snp-sites','-v','-o','tempout.vcf','tempin.fasta']) # Calls snp-sites and generates a VCF output
 	with open("tempout.vcf") as tempvcf: # Opens the VCF output
 		for row in tempvcf:
 			length = re.search(r'length=(\d+)>',row)
@@ -60,23 +64,18 @@ with open(args.input,'r') as file:
 		if line[0]==">":
 			trigger+=1
 		if trigger==3:
-			tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
-			tfile.write(templines) # Writes the temp variable in a .fasta file
-			tfile.close()
-			subprocess.call(['snp-sites','-v','-o','tempout.vcf','tempin.fasta']) # Calls snp-sites and generates a VCF output
-			
-			# MANIPULATE VCF FILE
+		# TAKES THE TWO FASTA SEQUENCES AND TRANSFORM TO VCF FILE	
 			seqlength,totalrows = vcfprocess(seqlength,totalrows)
 			trigger=1 # Sets the trigger to 1 again					
 			templines = "" # Resets the templines variable to empty
 			counter+=1
-
+		# STORES THE POSITION OF THE CURRENT FRAGMENT:
 		if trigger == 1: # Stores the length of every aligned region
 			match = re.search(r'(chr\d+:)(\d+)-',line)	# I've replaced \d\d with \d+
 			if match: header = match.group(2)
-
+		# TEMPORARILY STORES THE CURRENT LINE:
 		templines=templines+line
- 	
+ 	# END OF FILE:
 	seqlength,totalrows = vcfprocess(seqlength,totalrows)
 	counter+=1	
 	templines = ""
@@ -94,5 +93,5 @@ out.write(totalrows)
 os.remove("tempin.fasta")
 os.remove("tempout.vcf")
 
-print("Execution complete. %d FASTA pairs processed." %counter)
+print("Execution complete. %d FASTA pair(s) processed." %counter)
 exit()
