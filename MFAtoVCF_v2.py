@@ -33,7 +33,8 @@ args = parser.parse_args()
 # VCF MANIPULATION:
 trigger = 0 # Trigger=0 - Start; Trigger=1 - 1st human seq; Trigger=2 - 1st mouse seq; Trigger=3 - 2nd human seq
 counter = 0
-human1,mouse1 = "",""
+human1,human2 = "",""
+mouse1,mouse2 = "",""
 totalrows = ""
 # VCF FILE HEADER:
 startpos = ""
@@ -42,17 +43,11 @@ version = ""
 chrom = args.chrom
 seqlength = 0
 
-##########################
-## FUNCTION DEFINITION ##
-#########################
-
 def fastainput(human1,human2,mouse1,mouse2):
-	human2 = mouse 2 = ""
 	for i,base in enumerate(human1):
 		if base != "-":
 			mouse2 = mouse2 + mouse1[i]
 			human2 = human2 + base
-	for i,base in enumerate(mouse2)		
 	tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
 	tfile.write('%s%s%s%s'%(headers[0],human2,headers[1],mouse2)) # Writes the temp variable in a .fasta file
 	tfile.close()
@@ -86,7 +81,7 @@ with open(args.input,'r') as file:
 			fastainput(human1,human2,mouse1,mouse2) # Generates the .fasta file 
 			seqlength,totalrows = vcfprocess(seqlength,totalrows)
 			trigger=1 # Sets the trigger to 1 again					
-			human1 = mouse1 = ""
+			human1 = human2 = mouse1 = mouse2 = ""
 			headers = []
 			counter+=1
 		# STORES THE POSITION OF THE CURRENT FRAGMENT:
@@ -104,10 +99,9 @@ with open(args.input,'r') as file:
  	# UPON REACHING THE END OF THE FULE:
 	fastainput(human1,human2,mouse1,mouse2)
 	seqlength,totalrows = vcfprocess(seqlength,totalrows)		
-	human1 = mouse1 = ""
+	human1 = human2 = mouse1 = mouse2 = ""
 	headers = []
 	counter+=1	
-	
 #################################
 ## CREATING THE FINAL VCF FILE ##
 #################################
@@ -122,5 +116,5 @@ if not args.test:
 	os.remove("tempin.fasta")
 	os.remove("tempout.vcf")
 
-print("Execution complete. %d FASTA pair(s) processed covering a total of %s nucleotides." % (counter,seqlength))
+print("Execution complete. %d FASTA pair(s) processed." %counter)
 exit()
