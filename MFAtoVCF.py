@@ -46,15 +46,19 @@ seqlength = 0
 ## FUNCTION DEFINITION ##
 #########################
 
-def fastainput(human1,human2,mouse1,mouse2):
-	human2 = mouse 2 = ""
+def fastainput(human1,mouse1):
+	human2 = mouse2 = mouse3 = ""
 	for i,base in enumerate(human1):
 		if base != "-":
 			mouse2 = mouse2 + mouse1[i]
 			human2 = human2 + base
-	for i,base in enumerate(mouse2)		
+	for i,base in enumerate(mouse2):
+		if base != "-":	
+			mouse3 = mouse3 + base
+		else:
+			mouse3 = mouse3 + "X"	
 	tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
-	tfile.write('%s%s%s%s'%(headers[0],human2,headers[1],mouse2)) # Writes the temp variable in a .fasta file
+	tfile.write('%s%s%s%s'%(headers[0],human2,headers[1],mouse3)) # Writes the temp variable in a .fasta file
 	tfile.close()
 	if args.test:
 		print (headers[0].strip()+':',len(human2))
@@ -83,7 +87,7 @@ with open(args.input,'r') as file:
 			trigger+=1
 		if trigger==3: # Every Human (or reference species) line after the first
 		# REMOVE THE GAPS FROM THE HUMAN SEQUENCE:
-			fastainput(human1,human2,mouse1,mouse2) # Generates the .fasta file 
+			fastainput(human1,mouse1) # Generates the .fasta file 
 			seqlength,totalrows = vcfprocess(seqlength,totalrows)
 			trigger=1 # Sets the trigger to 1 again					
 			human1 = mouse1 = ""
@@ -102,7 +106,7 @@ with open(args.input,'r') as file:
 		elif trigger == 2 and line[0] != ">":
 			mouse1=mouse1+line.strip()
  	# UPON REACHING THE END OF THE FULE:
-	fastainput(human1,human2,mouse1,mouse2)
+	fastainput(human1,mouse1)
 	seqlength,totalrows = vcfprocess(seqlength,totalrows)		
 	human1 = mouse1 = ""
 	headers = []
@@ -117,6 +121,7 @@ out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the sam
 out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,seqlength))
 out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHuman\tMouse')
 out.write(totalrows)
+out.close()
 # Deleting temporal files required for SNP-sites
 if not args.test:
 	os.remove("tempin.fasta")
