@@ -11,3 +11,7 @@ import re
 subprocess.call('grep "#" %s > output2.vcf' % sys.argv[1],shell=True)
 subprocess.call('grep -v "#" %s | sort -k2 >> output2.vcf' % sys.argv[1],shell=True)
 
+#########################
+## VCF FILE REORDERING ##
+#########################
+
