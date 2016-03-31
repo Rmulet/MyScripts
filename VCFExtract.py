@@ -54,29 +54,32 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 	### IF OVERLAP BETWEEN HUMAN REGIONS ###		
 	if start1 < end0: 
 		pos = start0
-
+		print("start0",start0)
 		# NON-OVERLAPPING REGION:
 		for i,base in enumerate(human0): 
 			# print (base,mouse0)
-			if pos >= start1: # It can be larger if start1 < start 2 (double overlap)
+			if pos >= start1: # Pos can be larger if start1 < start0 (double overlap)
 				break
 			if (pos<start1 and base == mouse0[i]) or (pos<start1 and mouse0[i] == '-'):
 				pos = pos + 1 # The current base is pos, the next one is pos+1
 				continue
 			if 	pos<start1 and base != mouse0[i]:
 				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[i]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
+				print(newrow)
 				totalrows = totalrows + newrow	
 				pos = pos + 1 	
 			
 		# OVERLAPPING REGION:	
-		ini_overlap = max(start0-start1,0) # In case a long sequence overlaps two+ other sequences
-		for x,base in enumerate(human1[ini_overlap:]):
+		ini_overlap = max(start0-start1,0) # In case a long sequence overlaps two+ other sequences. Gaps?!
+		print("Overlap start0>start1",ini_overlap)
+		human1 = human1[ini_overlap:]
+		mouse1 = mouse1[ini_overlap:]
+		for x,base in enumerate(human1):
 			if pos > end0: # BEGINNING OR END?
 				print("Pos > end0")
-				human1 = human1[x:]
 				break			
-			print("1","Start0",start0,"End0",end0,"Position",pos)
-			print("2",base,mouse1[x],mouse0[pos-start0],x,pos-start0)
+			print("Start0",start0,"End0",end0,"Position",pos)
+			print(base,mouse1[x],mouse0[pos-start0],x,pos-start0)
 			print('Human0',human0)
 			print('Human1',human1)
 			print('Mouse0',mouse0)
@@ -87,13 +90,13 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				print("Non-divergent")
 				pos = pos + 1
 				continue
-			elif base != mouse1[x] and mouse1[x] == mouse0[pos-start0]: # 2) Same divergence, a single SNP
-				print("Same divergence")
-				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[i]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
-				totalrows = totalrows + newrow
 			elif mouse1[x] == "-" or mouse0[pos-start0] == "-": # 4) Gap in overlapping region -> Missing (.)
 				print("Gap in mouse")
 				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+'.'+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
+				totalrows = totalrows + newrow
+			elif base != mouse1[x] and mouse1[x] == mouse0[pos-start0]: # 2) Same divergence, a single SNP
+				print("Same divergence")
+				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[x]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
 				totalrows = totalrows + newrow
 			elif base != mouse1[x] and mouse1[x] != mouse0[pos-start0]: # 3) 2 different divergences -> Missing (.)
 				print("2 different divergences")
@@ -103,12 +106,14 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 	
 		# END OF THE OVERLAPPING REGION
 		if end1 >= end0: # If the current seq is longer than the previous -> It becomes the new 0
-			print("Pos middle",pos-start1)
+			human1 = human1[x:] # It cannot go after pos > end0 because the end of the loop can be reached without this condition!
+			mouse1 = mouse1[x:]
+			print(human1)
 			mouse0,human0 = "","" # We empty the current "mouse0" variable
-			for base in human1[pos-start1:]:	# We only store the non-overlapping part (right end)
-				mouse0 = mouse0 + mouse1[pos-start1]
-				human0 = human0 + base
-				pos = pos + 1
+			for y,base in enumerate(human1):	# We only store the non-overlapping part (right end)
+				if base != "-":
+					mouse0 = mouse0 + mouse1[y]
+					human0 = human0 + base
 			start0 = end0+1 # The new start is the end of the overlapping region (or end of the previous 0 sequence)
 			end0 = end1
 			seqlength = seqlength + len(human0)
@@ -134,6 +139,8 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 		end0 = end1
 		start0 = start1
 		seqlength = seqlength + len(human0)
+
+	### IF LAST REGION OF THE FILE ###	
 	if last == 1:
 		for i,base in enumerate(human0): # PRINT THE STORED SEQUENCE
 			pos = start0 + i
@@ -141,6 +148,7 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				continue
 			if base != mouse0[i]:
 				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[i]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
+				print(newrow)
 				totalrows = totalrows + newrow	
 	return(totalrows,seqlength,human0,mouse0,start0,end0)
 
@@ -156,7 +164,7 @@ with open(args.input,'r') as file:
 		# REMOVE THE GAPS FROM THE HUMAN SEQUENCE:
 			totalrows,seqlength,human0,mouse0,start0,end0 = snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0)
 			trigger=1 # Sets the trigger to 1 again					
-			human1 = mouse1 = ""
+			human1,mouse1 = "",""
 			if args.test:
 				print (headers[0].strip()+':',len(human2))
 			headers = []
@@ -193,3 +201,6 @@ out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Desc
 out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHuman\tMouse')			
 out.write(totalrows)
 out.close()
+
+print("Execution complete. %d FASTA pair(s) processed covering a total of %s nucleotides." % (counter,seqlength))
+exit()

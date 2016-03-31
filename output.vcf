@@ -1,5 +1,5 @@
 ##fileformat=VCFv4.1
-##contig=<ID=22,length=373>
+##contig=<ID=22,length=374>
 ##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">
 #CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	Human	Mouse
 22	16405003	.	G	C	.	.	.	GT	0	1
@@ -17,15 +17,15 @@
 22	16405102	.	T	C	.	.	.	GT	0	1
 22	16405106	.	T	C	.	.	.	GT	0	1
 22	16405130	.	T	C	.	.	.	GT	0	1
-22	16405176	.	A	G	.	.	.	GT	0	1
-22	16405180	.	C	T	.	.	.	GT	0	1
+22	16405174	.	A	G	.	.	.	GT	0	1
+22	16405178	.	C	T	.	.	.	GT	0	1
 22	16405223	.	C	.	.	.	.	GT	0	1
 22	16405224	.	T	.	.	.	.	GT	0	1
-22	16405226	.	C	.	.	.	.	GT	0	1
-22	16405243	.	A	.	.	.	.	GT	0	1
+22	16405226	.	C	A	.	.	.	GT	0	1
+22	16405243	.	A	C	.	.	.	GT	0	1
 22	16405251	.	T	C	.	.	.	GT	0	1
 22	16405376	.	T	C	.	.	.	GT	0	1
 22	16405397	.	T	C	.	.	.	GT	0	1
 22	16405403	.	T	C	.	.	.	GT	0	1
 22	16405409	.	T	C	.	.	.	GT	0	1
-22	16405418	.	C	C	.	.	.	GT	0	1
+22	16405418	.	C	T	.	.	.	GT	0	1

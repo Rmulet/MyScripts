@@ -55,12 +55,12 @@ def fastainput(human1,mouse1,end0):
 		if base != "-":
 			mouse2 = mouse2 + mouse1[i]
 			human2 = human2 + base
-	if start < end0: # OVERLAP --> It only works for the NEXT region!
+	if start < end0: # OVERLAP
 		for i,base in enumerate(mouse2): 
 			if base == "-":	
-				mouse3 = mouse3 + "X" # X for Gap -- Identify gaps in mice to be removed later
+				mouse3 = mouse3 + "X" # X for Gap -- Identify gaps in mice -> Missing information (.)
 			elif i < (end0-start+1) and base == human2[i]: # Only othe overlapping part of the region
-				mouse3 = mouse3 + "R" # P for Polymorphism -- a) Multiple Ps: retain human; b) One P: remove site
+				mouse3 = mouse3 + "P" # P for Polymorphism -- a) Multiple Ps: retain human; b) One P: remove site
 			else:
 				mouse3 = mouse3 + base	
 	else: # NOT OVERLAP
@@ -70,6 +70,7 @@ def fastainput(human1,mouse1,end0):
 			else:
 				mouse3 = mouse3 + base	
 	aligned.append([start,end1])
+	# SET THE NEW END0 (RIGHTEST PART OF THE SEQUENCE)
 	if end1 > end0:
 		end0 = end1			
 	tfile = open("tempin.fasta",'w') # Stores the pair of sequences in a temporal file
