@@ -20,11 +20,14 @@ import os
 
 parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
 parser.add_argument('-i','--input',type=str,required=True,help="Input file, in MFA format")
-parser.add_argument('-o','--output',type=str,default="output.vcf",help="Output file, in VCF format")
+parser.add_argument('-o','--output',type=str,default="outdef",help="Output file, in VCF format")
 parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")
 parser.add_argument('-t','--test',action='store_true',help="Testing mode, keeps temporal files for examination")
 
 args = parser.parse_args()
+
+if args.output == "outdef":
+	args.output = args.input.rsplit('.')[0]+".vcf"
 
 ############################
 ## INITIALIZING VARIABLES ##
@@ -53,8 +56,9 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 	pos = 0
 	### IF OVERLAP BETWEEN HUMAN REGIONS ###		
 	if start1 < end0: 
+		# print(human0)
 		pos = start0
-		print("start0",start0)
+		# print("start0",start0)
 		# NON-OVERLAPPING REGION:
 		for i,base in enumerate(human0): 
 			# print (base,mouse0)
@@ -65,7 +69,7 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				continue
 			if 	pos<start1 and base != mouse0[i]:
 				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[i]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
-				print(newrow)
+				# print(newrow)
 				totalrows = totalrows + newrow	
 				pos = pos + 1 	
 			
@@ -80,9 +84,9 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				break			
 			print("Start0",start0,"End0",end0,"Position",pos)
 			print(base,mouse1[x],mouse0[pos-start0],x,pos-start0)
-			print('Human0',human0)
+			#print('Human0',human0)
 			print('Human1',human1)
-			print('Mouse0',mouse0)
+			#print('Mouse0',mouse0)
 			print('Mouse1',mouse1)
 			if base == "-":
 				continue # Base NOT taken into account for the position
@@ -96,7 +100,7 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				totalrows = totalrows + newrow
 			elif base != mouse1[x] and mouse1[x] == mouse0[pos-start0]: # 2) Same divergence, a single SNP
 				print("Same divergence")
-				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[x]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
+				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[pos-start0]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
 				totalrows = totalrows + newrow
 			elif base != mouse1[x] and mouse1[x] != mouse0[pos-start0]: # 3) 2 different divergences -> Missing (.)
 				print("2 different divergences")
@@ -115,12 +119,13 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 					mouse0 = mouse0 + mouse1[y]
 					human0 = human0 + base
 			start0 = end0+1 # The new start is the end of the overlapping region (or end of the previous 0 sequence)
-			end0 = end1
-			seqlength = seqlength + len(human0)
+			end0 = end1	
+			seqlength = seqlength + len(human0)		
 		elif end0 >= end1: # If the previous sequence is longer than the current one
 			human0 = human0[pos-start0:]
 			mouse0 = mouse0[pos-start0:]	
-			start0 = pos+1
+			start0 = pos # The previous loop ends after adding +1 to pos, so the new start matches pos. E.g. if A goes from 1 to 100 and B goes from 10 to 50, the new start will be pos = 51				
+			seqlength = seqlength + len(human0)
 
 	### IF NOT OVERLAP BETWEEN HUMAN REGIONS ###		
 	else:			
@@ -148,8 +153,8 @@ def snpextraction(human1,mouse1,totalrows,seqlength,human0,mouse0,start0,end0,la
 				continue
 			if base != mouse0[i]:
 				newrow = '\n'+chrom+'\t'+str(pos)+'\t'+'.'+'\t'+base+'\t'+mouse0[i]+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1'
-				print(newrow)
 				totalrows = totalrows + newrow	
+		seqlength = seqlength + len(human0)
 	return(totalrows,seqlength,human0,mouse0,start0,end0)
 
 ############################
