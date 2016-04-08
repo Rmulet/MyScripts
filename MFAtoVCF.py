@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# MFAtoVCF, Version 0.6
+# MFAtoVCF, Version 1.1B - This version replaces the 1 in the mouse column with dots when the alternative allele is missing (.).
 
 # This script converts multi-FASTA alignments (.mfa) files structured as pairs of aligned sequences, each of which covers a region
 # of a chromosome, into VCF files containing SNP data. For overlapping regions of the reference species that may match different parts
@@ -11,10 +11,19 @@
 # 4) Mouse gap -> Missing (.) 
 
 # WARNING: This program must be provided with the reference sequence of that chromosome. 
+# WARNING: By default, the script does NOT convert non-aligned regions to missing information. To do so, specif the "-n" option.
+# UPDATES 1: The script has been cleaned of lines added during the testing stage.
+# UPDATES 2: The "Human" column has been removed so that it does not interfere with the final merge.
+# UPDATES 3: Now the VCF file is automatically converted to VCF.GZ with bgzip and indexed with tabix.
+# UPDATES 4: The alternative allele is diploid for more uniformity with the 1000 GP (1/1 or ./.).
+# FUTURE UPDATES: Study the feasibility of adding parallelism (multiprocessing module).
 
+import time
 import argparse
 import re
-import os
+import subprocess
+
+t0 = time.clock()
 
 #######################
 ## PARSING ARGUMENTS ##
@@ -25,23 +34,29 @@ parser.add_argument('input',type=str,help="Input file, in MFA format")
 parser.add_argument('-s','--sequence',type=str,required=True,help="DNA sequence of the chromosome")
 parser.add_argument('-o','--output',type=str,default="outdef",help="Output file, in VCF format")
 parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")
-parser.add_argument('-n','--nonaligned',action='store_true',help="Non-aligned regions are printed as missing information")
+parser.add_argument('-p','--process',action='store_true',help="Compresses the VCF file with bgzip and indexes it with tabix")
 parser.add_argument('-t','--test',action='store_true',help="Testing mode, keeps temporal files for examination")
 
 args = parser.parse_args()
 
 if args.output == "outdef":
-	args.output = args.input.rsplit('.')[0]+"son.vcf"
+	args.output = args.input.rsplit('.')[0]+"_aln.vcf"
 
 ###########################
 ## IMPORT FASTA SEQUENCE ##
 ###########################
 
-from Bio import SeqIO
 sequence = open(args.sequence, "rU") # r = read, U = Universal
-refgenome = SeqIO.read(sequence,'fasta') # SeqIO.read expects only one FASTA record
-refgenome = refgenome.upper()
-# print(refgenome[50957596-1])
+refgenome = ""
+upper = str.upper
+for line in sequence: 
+	if line[0] != ">":
+		refgenome = refgenome + upper(line.rstrip())	
+
+# Python has a module for importing FASTA sequences, but it is slower than this loop:
+# from Bio import SeqIO
+# refgenome = SeqIO.read(sequence,'fasta') # SeqIO.read expects only one FASTA record
+# refgenome = refgenome.upper()
 
 ############################
 ## INITIALIZING VARIABLES ##
@@ -51,7 +66,7 @@ refgenome = refgenome.upper()
 start0,end0 = 0,0
 trigger = 0 # Trigger=0 - Start; Trigger=1 - 1st human seq; Trigger=2 - 1st mouse seq; Trigger=3 - 2nd human seq
 arrayvcf = [None]*len(refgenome) # Must have the same size as the genome to compare each position
-human1,mouse1 = "",""
+human,mouse = "",""
 
 # VCF FILE HEADER:
 headers = []
@@ -62,24 +77,12 @@ counter = 0 # Count the number of processed FASTA regions
 ## COMPARISON FUNCTION ##
 #########################
 
-def remgaps(human1,mouse1):
-	human2,mouse2 = "",""
-	for i,base in enumerate(human1): # REMOVE GAPS IN HUMAN SEQUENCE
-		if base != "-":
-			mouse2 = mouse2 + mouse1[i]
-			human2 = human2 + base
-	return(human2,mouse2)		
-
-def comparison(human1,mouse1,arrayvcf):
+def comparison(human,mouse,arrayvcf):
 	pos = start-2 # Python is 0-based, but the reference genome is 1-based. Also, we add +1 at the beginning of the loop.
-	human2, mouse2 = remgaps(human1,mouse1)
-	#print("start",start,"end",end)
-	#print("Region",human2[1])
-	#print("Refgenome",refgenome[pos:end-1])
-	for mnt in mouse2:
-		pos = pos + 1
-		#print("Region",mnt)
-		#print("Refgenome",refgenome[pos],pos)
+	for i,mnt in enumerate(mouse):
+		if human[i] == "-":
+			continue
+		pos = pos + 1	
 		# FILLED POSITION:
 		if arrayvcf[pos] != None:
 			if mnt == arrayvcf[pos]: # 2) Same divergence, a single SNP
@@ -98,7 +101,6 @@ def comparison(human1,mouse1,arrayvcf):
 				arrayvcf[pos] = mnt
 			elif mnt != refgenome[pos] and mnt == "-": # Mouse gap
 				arrayvcf[pos] = "."
-	#print("arrayvcf",start,end,arrayvcf[start-1:end])
 	return (arrayvcf)
 
 ############################
@@ -111,9 +113,9 @@ with open(args.input,'r') as file:
 			trigger+=1
 		if trigger==3: # Every Human (or reference species) line after the first
 		# REMOVE THE GAPS FROM THE HUMAN SEQUENCE:
-			arrayvcf = comparison(human1,mouse1,arrayvcf)
+			arrayvcf = comparison(human,mouse,arrayvcf)
 			trigger=1 # Sets the trigger to 1 again					
-			human1,mouse1 = "",""
+			human,mouse = "",""
 			headers = []
 			counter+=1
 		# STORES THE POSITION OF THE CURRENT FRAGMENT:
@@ -131,14 +133,14 @@ with open(args.input,'r') as file:
 		elif trigger == 2 and line[0]==">": # MOUSE HEADER
 			headers.append('\n'+line)
 		elif trigger == 1 and line[0] != ">": # HUMAN SEQUENCE
-			human1=human1+line.strip()
+			human=human+line.strip()
 		elif trigger == 2 and line[0] != ">": # MOUSE SEQUENCE
-			mouse1=mouse1+line.strip()
+			mouse=mouse+line.strip()
 		if args.test and line[0] == ">":
 			print (headers[0].strip())	
  	# UPON REACHING THE END OF THE FULE:
-	arrayvcf = comparison(human1,mouse1,arrayvcf)
-	human1 = mouse1 = ""
+	arrayvcf = comparison(human,mouse,arrayvcf)
+	human = mouse = ""
 	headers = []
 	counter+=1				
 
@@ -148,14 +150,24 @@ with open(args.input,'r') as file:
 
 out = open(args.output,'w') # Open the final output file. 
 out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the same version (but it can be modified)
-out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,100))
-out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHuman\tMouse')			
+out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,end0-start0))
+out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tMouse')			
 for ref,variant in enumerate(arrayvcf[start0:end0]):
-	if variant == None and args.nonaligned:
-		out.write('\n'+chrom+'\t'+str(ref+start0+1)+'\t'+'.'+'\t'+refgenome[ref+start0]+'\t'+'N'+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1')
-	if variant != 0 and variant != None:
-		out.write('\n'+chrom+'\t'+str(ref+start0+1)+'\t'+'.'+'\t'+refgenome[ref+start0]+'\t'+variant+'\t'+'.\t.\t.\t'+'GT'+'\t'+'0'+'\t'+'1')
+	if variant == None:
+		out.write('\n%s\t%d\t.\t%s\t.\t.\t.\t.\tGT\t1/1' % (chrom,ref+start0+1,refgenome[ref+start0]))
+	elif variant == "." and variant != None:
+		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t./.' % (chrom,ref+start0+1,refgenome[ref+start0],variant))
+	elif variant != 0 and variant != None:
+		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t1/1' % (chrom,ref+start0+1,refgenome[ref+start0],variant))	
 out.close()
 
-print("Execution complete. %d FASTA pair(s) processed covering a total of %s nucleotides." % (counter,end0-start0))
+###################
+## FINAL TOUCHES ##
+###################
+
+subprocess.call(['bgzip', args.output]) # The -c argument keeps the original file and prints the new one to screen
+subprocess.call(['tabix', '-p', 'vcf',args.output+'.gz'])
+
+print("\nExecution complete in %d second(s). %d FASTA pair(s) processed covering a total of %s nucleotides." % (time.clock()-t0,counter,end0-start0))
+
 exit()
