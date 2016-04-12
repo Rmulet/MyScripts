@@ -1,0 +1,8 @@
+#!/usr/bin/expect
+
+# Simple script that automatically connects to a ssh and inputs the password.
+
+spawn ssh roger@158.109.215.179
+expect "password:"
+send "r0g3r\r"
+interact

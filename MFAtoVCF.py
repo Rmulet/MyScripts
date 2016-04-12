@@ -29,18 +29,18 @@ t0 = time.clock()
 ## PARSING ARGUMENTS ##
 #######################
 
-parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
+parser = argparse.ArgumentParser(description='Extract the variants from a multi-fasta (MFA) alignment in VCF format. Any position absent from the alignment or ambiguous is considered missing (.).  By default, the tool compresses the VCF file with bgzip and indexes it with tabix, Currently it only handles single .mfa files containing information from one chromosome. ')
 parser.add_argument('input',type=str,help="Input file, in MFA format")
 parser.add_argument('-s','--sequence',type=str,required=True,help="DNA sequence of the chromosome")
 parser.add_argument('-o','--output',type=str,default="outdef",help="Output file, in VCF format")
 parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")
-parser.add_argument('-p','--process',action='store_true',help="Compresses the VCF file with bgzip and indexes it with tabix")
+parser.add_argument('-np','--noprocess',action='store_true',help="Keeps the output in VCF format, skipping compression and indexing")
 parser.add_argument('-t','--test',action='store_true',help="Testing mode, keeps temporal files for examination")
 
 args = parser.parse_args()
 
 if args.output == "outdef":
-	args.output = args.input.rsplit('.')[0]+"_aln.vcf"
+	args.output = args.input.rsplit('.')[0]+".vcf"
 
 ###########################
 ## IMPORT FASTA SEQUENCE ##
@@ -153,11 +153,11 @@ out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the sam
 out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,end0-start0))
 out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tMouse')			
 for ref,variant in enumerate(arrayvcf[start0:end0]):
-	if variant == None:
-		out.write('\n%s\t%d\t.\t%s\t.\t.\t.\t.\tGT\t1/1' % (chrom,ref+start0+1,refgenome[ref+start0]))
-	elif variant == "." and variant != None:
+	if variant == None: # Non-aligned region: missing mouse information.
+		out.write('\n%s\t%d\t.\t%s\t.\t.\t.\t.\tGT\t./.' % (chrom,ref+start0+1,refgenome[ref+start0]))
+	elif variant == "." and variant != None: # Missing mouse information: variant = .
 		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t./.' % (chrom,ref+start0+1,refgenome[ref+start0],variant))
-	elif variant != 0 and variant != None:
+	elif variant != 0 and variant != None: # Divergence, not polymorphism (0)
 		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t1/1' % (chrom,ref+start0+1,refgenome[ref+start0],variant))	
 out.close()
 
@@ -165,8 +165,10 @@ out.close()
 ## FINAL TOUCHES ##
 ###################
 
-subprocess.call(['bgzip', args.output]) # The -c argument keeps the original file and prints the new one to screen
-subprocess.call(['tabix', '-p', 'vcf',args.output+'.gz'])
+if args.noprocess == False:
+
+	subprocess.call(['bgzip', args.output]) # The -c argument keeps the original file and prints the new one to screen
+	subprocess.call(['tabix', '-p', 'vcf',args.output+'.gz'])
 
 print("\nExecution complete in %d second(s). %d FASTA pair(s) processed covering a total of %s nucleotides." % (time.clock()-t0,counter,end0-start0))
 
