@@ -61,18 +61,18 @@ do
 	if [ "$4" == "-c" ] || [ "$4" == "-cnvs" ]; then
 		bcftools merge -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.vcf
 	else	
-		bcftools merge -Ou -o merge.bcf -r $chrom:$pos1-$pos2 $gpfile $alnfile
+		bcftools merge -o merge.bcf -Ou -r $chrom:$pos1-$pos2 $gpfile $alnfile
 		echo "1st merge"
 	fi
 	# REPLACE THE MISSING POSITIONS OF 1000GP WITH 0
-	bcftools view -s "^Mouse" merge.vcf > frag.vcf # Remove the Mouse samples
-	bcftools +setGT frag.vcf -o filled.vcf.gz -Oz -- -t ./. -n 0  # Replace . with 0
-	tabix -f -p vcf filled.vcf.gz
-	bcftools merge -r $chrom:$pos1-$pos2 filled.vcf.gz $alnfile > merge.$k.vcf # Merge filled.vcf with alignment again
+	bcftools view -s "^Mouse" merge.bcf > frag.bcf # Remove the Mouse samples
+	bcftools +setGT frag.bcf -o filled.bcf.gz -Oz -- -t ./. -n 0  # Replace . with 0
+	bcftools index filled.bcf.gz # Index
+	bcftools merge -r $chrom:$pos1-$pos2 filled.bcf.gz $alnfile > merge.$k.vcf # Merge filled.vcf with alignment again
 	echo "2nd merge"
 	((k++))
 done < "$bedfile"
-rm merge.vcf frag.vcf filled.vcf.gz filled.vcf.gz.tbi
+#rm merge.vcf frag.vcf filled.vcf.gz filled.vcf.gz.tbi
 
  # bcftools +setGT combined.vcf -o filled.vcf -- -t . -n 0
  # bcftools view -s Mouse merge.1.vcf
