@@ -5,7 +5,6 @@
 # http://stackoverflow.com/questions/4165135/how-to-use-while-read-bash-to-read-the-last-line-in-a-file-if-there-s-no-new
 # WARNING: This script assumes that the alignment file only contains the "Mouse" column, i.e. not the "Human". Otherwise, 
 # there will be issues with the merge because only the "Mouse" column is removed in the split.
-# WARNING: This script requires the usage of the latest experimental version of BCFTOOLS, available at http://pd3.github.io/bcftools/
 
 display_usage() { 
 	echo -e "\nThis script merges regions of two compressed VCF files defined in a BED file using BCFtools. To work, it must be provided with one BED file containing positions in the 2nd and 3rd columns, and two VCF files." 
@@ -54,38 +53,32 @@ fi
 
 while read chrom pos1 pos2 level
 do
-	# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
+	# MERGE THE VCF FILES CORRESPONDING TO THE TWO REGIONS
 	echo $k
 	echo $chrom $pos1 $pos2
 	chrom="${chrom##*[A-Za-z]}" # To extract the chromosome number
 	echo $chrom
 	if [ "$4" == "-c" ] || [ "$4" == "-cnvs" ]; then
-		bcftools merge -Ov --missing-to-ref -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.vcf
-		bgzip merge.vcf
+		bcftools merge -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.vcf
 	else	
-		bcftools merge -Oz --missing-to-ref -o merge.$k.vcf -r $chrom:$pos1-$pos2 $gpfile $alnfile
-		echo -e "Files merged: merge.$k.vcf generated"
+		bcftools merge -Ou -o merge.vcf -r $chrom:$pos1-$pos2 $gpfile $alnfile
+		echo "1st merge"
 	fi
-	tabix -p vcf merge.$k.vcf # Tabixing for analysis with PopGenome
+	# REPLACE THE MISSING POSITIONS OF 1000GP WITH 0
+	bcftools view -s "^Mouse" merge.vcf > frag.vcf # Remove the Mouse samples
+	bcftools +setGT frag.vcf -o filled.vcf.gz -Oz -- -t ./. -n 0  # Replace . with 0
+	tabix -f -p vcf filled.vcf.gz
+	bcftools merge -r -Oz $chrom:$pos1-$pos2 filled.vcf.gz $alnfile > merge.$k.vcf.gz # Merge filled.vcf with alignment again
+	echo "2nd merge"
 	((k++))
 done < "$bedfile"
 
- # TIMINGS: 1 MB region #
+# CLEANING AND PREPARING FOR THE NEXT STEP
+rm merge.vcf frag.vcf filled.vcf.gz filled.vcf.gz.tbi # Removing temporal files
+tabix -p vcf merge.$k.vcf.gz # Indexing for PopGenome
 
- # Merge BCF vs VCF: 1'10'' vs 2'26'' (the difference is less if we output as VCF)
- # Remove mouse BCF vs VCF: 5'36'' vs 8'5''
- # Replace BCF vs VCF: 4'40'' vs 4'30''
- # Index BCF vs VCF: 21'' both
- # Final merge BCF vs VCF: 3'3'' vs 4'24''
-
- # Total pipeline VCF (Andromeda): 12'19''
- # Total pipeline BCF (Andromeda): 10'28''
-
- # Script Perl (from VCF, Andromeda): 1'26'' (merge) + 1'18'' (correct) => 2'44'' + 1'6'' (bgzip) + 23'' (tabix) => 4'13''
- # Script Perl (from BCF, Andromeda): 1'18'' (merge) + 1'18'' (correct) => 2'36'' + 1'6'' (bgzip) + 23'' (tabix) => 4'6''
-
- # Bcftools merge --missing-to-ref (from VCF, not Andromeda): 2'31''
- # Bcftools merge --missing-to-ref (from BCF, Andromeda): 1'44''
-
- # Bcftools merge --missing-to-ref (from VCF,Andromeda) + bgzip + tabix => 2'56''
- # Bcftools merge --missing-to-ref (from VCF,Andromeda) + bgzip + tabix => 3'8''
+ # bcftools +setGT combined.vcf -o filled.vcf -- -t . -n 0
+ # bcftools view -s Mouse merge.1.vcf
+ # time tabix -h chr22_aln2.vcf.gz 22:20000000-25000000 | bgzip > test.vcf.gz
+ # time cut -f1-2504 test.vcf > a.vcf --> 1'' (but the information of the headers is no longer true)
+ # time bcftools view -s "^Mouse" test.vcf.gz > b.vcf --> 5''

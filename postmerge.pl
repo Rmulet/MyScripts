@@ -1,13 +1,16 @@
 #!/usr/bin/perl
 
+# Postmerge.pl, Version 0.8. This script is no longer in use because the same can be achieved with the experimental feature bcftools --missing-to-ref. It is faster and also overcomes one downside of this script: the variants not found in the mouse genotype are also replaced with 0/0 (that is, we assume they are monomorphic).
+
 use strict;
 
 my $merger = $ARGV[0]; # Merger human-mouse
+my $output = $ARGV[1]; # Output in VCF format
 my $individuals = -1;
 my $counter = 0;
 
 open (my $file, '<', $merger) or die "Cannot open input $merger: $!"; # Opens the 1000GP file (stored in $gpfile)
-#open(STDOUT, '>', './output.vcf') or die "Cannot create output file"; # Redirects output to a FASTA file in the same folder
+open(STDOUT, '>', $output) or die "Cannot create output file"; # Redirects output to a file in the same folder
 
 while (<$file>) {
 	my $line = $_;
@@ -35,4 +38,7 @@ while (<$file>) {
 	}
 }
 
-sprintf ("Replaced %d alleles in a total of %d individuals",$counter,$individuals)
+close($file);
+close(STDOUT);
+
+print(sprintf ("Replaced %d alleles in a total of %d individuals",$counter,$individuals));

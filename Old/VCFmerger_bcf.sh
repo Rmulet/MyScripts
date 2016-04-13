@@ -72,10 +72,20 @@ do
 	echo "2nd merge"
 	((k++))
 done < "$bedfile"
-#rm merge.vcf frag.vcf filled.vcf.gz filled.vcf.gz.tbi
+rm merge.bcf frag.bcf filled.bcf.gz filled.bcf.gz.tbi
 
- # bcftools +setGT combined.vcf -o filled.vcf -- -t . -n 0
- # bcftools view -s Mouse merge.1.vcf
- # time tabix -h chr22_aln2.vcf.gz 22:20000000-25000000 | bgzip > test.vcf.gz
- # time cut -f1-2504 test.vcf > a.vcf --> 1'' (but the information of the headers is no longer true)
- # time bcftools view -s "^Mouse" test.vcf.gz > b.vcf --> 5''
+ # TIMINGS: 1 MB region #
+
+ # Merge BCF vs VCF: 1'10'' vs 2'26'' (the difference is less if we output as VCF)
+ # Remove mouse BCF vs VCF: 5'36'' vs 8'5''
+ # Replace BCF vs VCF: 4'40'' vs 4'30''
+ # Index BCF vs VCF: 21'' both
+ # Final merge BCF vs VCF: 3'3'' vs 4'24''
+
+ # Total pipeline VCF (Andromeda): 12'19''
+ # Total pipeline BCF (Andromeda): 10'28''
+
+ # Script Perl (from VCF): 1'26'' (merge) + 1'18'' (correct) => 2'44'' + 1'6'' (bgzip) + 23'' (tabix) => 4'13''
+ # Script Perl (from BCF): 1'18'' (merge) + 1'18'' (correct) => 2'36'' + 1'6'' (bgzip) + 23'' (tabix) => 4'6''
+
+ # Bcftools merge --missing-to-ref (from VCF, not Andromeda): 2'31''

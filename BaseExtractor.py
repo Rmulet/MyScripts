@@ -37,7 +37,7 @@ if sys.argv[2] == "-l" or sys.argv[2] == "line":
 	if len(coords) == 2:
 		pos = [(int(coords[0])-1)*50,(int(coords[1])-1)*50]# We subtract the header line
 		print(pos)
-		print(refgenome[pos[0]-1:pos[1]])  # -1 because Python is 0-based
+		print(refgenome[pos[0]-1:pos[1]-1])  # -1 because Python is 0-based.
 	else:
 		pos = (int(sys.argv[3])-1)*50 # We subtract the header line
 		print(pos)
@@ -53,7 +53,7 @@ else:
 	if len(coords) == 2:
 		pos = [int(coords[0]),int(coords[1])]
 		print(pos)
-		print(refgenome[pos[0]-1:pos[1]]) # -1 because Python is 0-based
+		print(refgenome[pos[0]-1:pos[1]-1]) # -1 because Python is 0-based
 	else:
 		pos = int(sys.argv[2])
 		print(refgenome[pos-1]) # -1 because Python is 0-based
