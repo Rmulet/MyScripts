@@ -63,10 +63,10 @@ do
 		bcftools merge -Ov --missing-to-ref -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.vcf
 		bgzip merge.vcf
 	else	
-		bcftools merge -Oz --missing-to-ref -o merge.$k.vcf -r $chrom:$pos1-$pos2 $gpfile $alnfile
+		bcftools merge -Oz --missing-to-ref -o merge.$k.vcf.gz -r $chrom:$pos1-$pos2 $gpfile $alnfile
 		echo -e "Files merged: merge.$k.vcf generated"
 	fi
-	tabix -p vcf merge.$k.vcf # Tabixing for analysis with PopGenome
+	tabix -p vcf merge.$k.vcf.gz # Tabixing for analysis with PopGenome
 	((k++))
 done < "$bedfile"
 
