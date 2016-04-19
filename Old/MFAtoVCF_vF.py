@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# MFAtoVCF, Version 1.0B - This version replaces the 1 in the mouse column with dots when the alternative allele is missing (.).
+# MFAtoVCF, Version 1.1B - This version replaces the 1 in the mouse column with dots when the alternative allele is missing (.).
 
 # This script converts multi-FASTA alignments (.mfa) files structured as pairs of aligned sequences, each of which covers a region
 # of a chromosome, into VCF files containing SNP data. For overlapping regions of the reference species that may match different parts
@@ -12,12 +12,16 @@
 
 # WARNING: This program must be provided with the reference sequence of that chromosome. 
 # WARNING: By default, the script does NOT convert non-aligned regions to missing information. To do so, specif the "-n" option.
-# UPDATES: The script has been cleaned of lines added during the testing stage.
+# UPDATES 1: The script has been cleaned of lines added during the testing stage.
+# UPDATES 2: The "Human" column has been removed so that it does not interfere with the final merge.
+# UPDATES 3: Now the VCF file is automatically converted to VCF.GZ with bgzip and indexed with tabix.
+# UPDATES 4: The alternative allele is diploid for more uniformity with the 1000 GP (1/1 or ./.).
 # FUTURE UPDATES: Study the feasibility of adding parallelism (multiprocessing module).
 
 import time
 import argparse
 import re
+import subprocess
 
 t0 = time.clock()
 
@@ -25,12 +29,12 @@ t0 = time.clock()
 ## PARSING ARGUMENTS ##
 #######################
 
-parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
+parser = argparse.ArgumentParser(description='Extract the variants from a multi-fasta (MFA) alignment in VCF format. Any position absent from the alignment or ambiguous is considered missing (.).  By default, the tool compresses the VCF file with bgzip and indexes it with tabix, Currently it only handles single .mfa files containing information from one chromosome. ')
 parser.add_argument('input',type=str,help="Input file, in MFA format")
 parser.add_argument('-s','--sequence',type=str,required=True,help="DNA sequence of the chromosome")
 parser.add_argument('-o','--output',type=str,default="outdef",help="Output file, in VCF format")
 parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")
-parser.add_argument('-n','--nonaligned',action='store_true',help="Non-aligned regions are printed as missing information")
+parser.add_argument('-np','--noprocess',action='store_true',help="Keeps the output in VCF format, skipping compression and indexing")
 parser.add_argument('-t','--test',action='store_true',help="Testing mode, keeps temporal files for examination")
 
 args = parser.parse_args()
@@ -147,15 +151,25 @@ with open(args.input,'r') as file:
 out = open(args.output,'w') # Open the final output file. 
 out.write('##fileformat=VCFv4.1\n') # We assume it is always going to be the same version (but it can be modified)
 out.write('##contig=<ID=%s,length=%d>\n##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype">\n' % (args.chrom,end0-start0))
-out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tHuman\tMouse')			
+out.write('#CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tMouse')			
 for ref,variant in enumerate(arrayvcf[start0:end0]):
-	if variant == None and args.nonaligned:
-		out.write('\n%s\t%d\t.\t%s\t.\t.\t.\t.\tGT\t0\t1' % (chrom,ref+start0+1,refgenome[ref+start0]))
-	elif variant == "." and variant != None:
-		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t0\t.' % (chrom,ref+start0+1,refgenome[ref+start0],variant))
-	elif variant != 0 and variant != None:
-		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t0\t1' % (chrom,ref+start0+1,refgenome[ref+start0],variant))	
+	if variant == None: # Non-aligned region: missing mouse information.
+		out.write('\n%s\t%d\t.\t%s\t.\t.\t.\t.\tGT\t./.' % (chrom,ref+start0+1,refgenome[ref+start0]))
+	elif variant == "." and variant != None: # Missing mouse information: variant = .
+		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t./.' % (chrom,ref+start0+1,refgenome[ref+start0],variant))
+	elif variant != 0 and variant != None: # Divergence, not polymorphism (0)
+		out.write('\n%s\t%d\t.\t%s\t%s\t.\t.\t.\tGT\t1/1' % (chrom,ref+start0+1,refgenome[ref+start0],variant))	
 out.close()
 
+###################
+## FINAL TOUCHES ##
+###################
+
+if args.noprocess == False:
+
+	subprocess.call(['bgzip', args.output]) # The -c argument keeps the original file and prints the new one to screen
+	subprocess.call(['tabix', '-p', 'vcf',args.output+'.gz'])
+
 print("\nExecution complete in %d second(s). %d FASTA pair(s) processed covering a total of %s nucleotides." % (time.clock()-t0,counter,end0-start0))
+
 exit()
