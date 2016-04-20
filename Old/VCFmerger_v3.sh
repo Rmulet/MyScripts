@@ -1,10 +1,11 @@
 #!/bin/bash
 
-# VERSION 0.6 - Merges the selected regions of the two VCF files with bcftools. Calculates statistics with R.
-# WARNING: This script requires a terminating newline in the BED file. Information on how to circumvent this limitation is available here:
+# VERSION 0.5B - Merges the selected regions of the two VCF files with bcftools.
+# WARNING: This script requires a terminating newline. Information on how to circumvent this limitation is available here:
 # http://stackoverflow.com/questions/4165135/how-to-use-while-read-bash-to-read-the-last-line-in-a-file-if-there-s-no-new
+# WARNING: This script assumes that the alignment file only contains the "Mouse" column, i.e. not the "Human". Otherwise, 
+# there will be issues with the merge because only the "Mouse" column is removed in the split.
 # WARNING: This script requires the usage of the latest experimental version of BCFTOOLS, available at http://pd3.github.io/bcftools/
-
 # UPDATE: Argument parsing has been improved.
 
 # Makes sure that that no repeated rows are added
@@ -98,8 +99,8 @@ do
 	chrom="${chrom##*[A-Za-z]}" # To extract the chromosome number
 	echo $k
 	echo $chrom $pos1 $pos2 
-	if [ "$(($pos2 - $pos1))" -le "$WINDOW" ]; then # If size region < size window, there is no need to examine it 
-		echo -e "$pos2 - $pos1 is inferior to $WINDOW. This segment will be skipped."
+	if [ "$(($pos2 - $pos1))" -le "200" ]; then # If size region < size window, there is no need to examine it 
+		expr $pos2 - $pos1
 		continue
 	fi	
 	# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
@@ -113,10 +114,33 @@ do
 	tabix -p vcf merge.$k.vcf.gz # Tabixing for analysis with PopGenome
 
 	# R PROCESSING:
-	RegionAnalysis.R merge.$k.vcf.gz $pos1 $pos2 $WINDOW >/dev/null # Avoid the message visualizatio
-	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
-	echo -e "Analysis with R complete. Data exported to the MySQL database."
-	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
+	RegionAnalysis.R merge.$k.vcf.gz $pos1 $pos2 >/dev/null # Avoid the message visualization, slave to cut startup messages
+	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null
+	
+	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi
 
 	((k++))
 done < "$bedfile"
+
+ # TIMINGS: 1 MB region #
+
+ # Merge BCF vs VCF: 1'10'' vs 2'26'' (the difference is less if we output as VCF)
+ # Remove mouse BCF vs VCF: 5'36'' vs 8'5''
+ # Replace BCF vs VCF: 4'40'' vs 4'30''
+ # Index BCF vs VCF: 21'' both
+ # Final merge BCF vs VCF: 3'3'' vs 4'24''
+
+ # Total pipeline VCF (Andromeda): 12'19''
+ # Total pipeline BCF (Andromeda): 10'28''
+
+ # Script Perl (from VCF, Andromeda): 1'26'' (merge) + 1'18'' (correct) => 2'44'' + 1'6'' (bgzip) + 23'' (tabix) => 4'13''
+ # Script Perl (from BCF, Andromeda): 1'18'' (merge) + 1'18'' (correct) => 2'36'' + 1'6'' (bgzip) + 23'' (tabix) => 4'6''
+
+ # Bcftools merge --missing-to-ref (from VCF, not Andromeda): 2'31''
+ # Bcftools merge --missing-to-ref (from BCF, Andromeda): 1'44''
+
+ # Bcftools merge --missing-to-ref (from VCF,Andromeda) + bgzip + tabix => 2'56''
+ # Bcftools merge --missing-to-ref (from VCF,Andromeda) + bgzip + tabix => 3'8''
+
+
+ # mysql --user="root" --password="RM333" --database="PEGH" --execute="ALTER TABLE Genomics CHANGE COLUMN row_names Window VARCHAR(20)"
