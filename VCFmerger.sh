@@ -4,8 +4,9 @@
 # WARNING: This script requires a terminating newline in the BED file. Information on how to circumvent this limitation is available here:
 # http://stackoverflow.com/questions/4165135/how-to-use-while-read-bash-to-read-the-last-line-in-a-file-if-there-s-no-new
 # WARNING: This script requires the usage of the latest experimental version of BCFTOOLS, available at http://pd3.github.io/bcftools/
+# WARNING: RegionAnalysis.R is assumed to be in an environment variable. If not, modify the address.
 
-# UPDATE: Argument parsing has been improved.
+# UPDATE: Argument parsing has been improved. Window size = 200 by default.
 
 # Makes sure that that no repeated rows are added
 mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
@@ -120,3 +121,5 @@ do
 
 	((k++))
 done < "$bedfile"
+
+echo -e "\nAll regions in the BED file merged and analyzed."
