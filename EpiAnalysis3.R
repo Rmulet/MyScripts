@@ -3,9 +3,9 @@
 # setwd("~/Documents/3_EpigenomicsData/Roadmap")
 # file <- "BI.Adipose_Nuclei.H3K4me1.7.narrowPeak"
 
-# Epigenetic Analysis Pipeline, v0.3 - This script compares windows contained in a MySQL database with
-# ChIP-seq data in narrowPeak format to investigate what fraction of each window falls within a peak.
-# Importantly, it assumes that the filenames follow the Roadmap pattern; files from other sources
+# Epigenetic Analysis Pipeline, v0.3 - This script heavly relies on the use of BED files
+# for narrow peaks, so files must be provided in the specified format. Importantly,
+# iit assumes that the filenames follow the Roadmap pattern; files from other sources
 # will require modifications in the regex part.
 
 # WARNING: Review positions!
@@ -14,35 +14,24 @@
 ## ARGUMENT PARSING ##
 ######################
 
-args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
-
-usage <- function() {
-  cat ("\nProgram: Epigenetic Analysis Pipeline, v0.3 - This script compares windows contained in a MySQL database with ChIP-seq data in narrowPeak format to investigate what fraction of each window falls within a peak.\n")
-  cat ("\nUsage: EpiAnalysis.R [Mode] [Donor/Tissue]\n")
-  cat ("File name format (Roadmap style): [University].[CellType].[Mark].[Donor]\n\n")
-  quit()
-}
-
-if (length(args) < 1) {usage()}
-if (args[1] == "-h" || args[1] == "--help") {usage()}
-
-mode <- args[1] # Operation mode of the script
+args <- commandArgs() # Import arguments from command line
+mode <- args[6] # Operation mode of the script
 if (mode == "Intraindividual") {
-  donor <- args[2] # Name of the donor
+  donor <- args[7] # Name of the donor
   print("Intraindividual mode selected")
 } else if (mode == "Interindividual") {
-  tissue <- args[2] 
+  tissue <- args[7] 
   print("Interindividual mode selected")
 } else if (mode == "Interspecies") {
-  tissue <- args[2]
+  tissue <- args[7]
   print("Interspecies mode selected")
 }
+
+headerbed <- c("chr","start","end")
 
 ################################################
 ## ACCESS MYSQL DATABASE AND RETRIEVE WINDOWS ##
 ################################################
-
-headerbed <- c("chr","start","end")
 
 if (suppressMessages(!require("GenomicRanges"))) {
   print ("The 'GenomicRanges' package is missing and will be installed")
@@ -124,64 +113,35 @@ library(stringr)
 
 filenames <- list.files(".", pattern="*.narrowPeak", full.names=TRUE) # Files in the folder
 # Roadmap standard: a few donors have IDs with dots 
-pattern <- "\\.(\\w+)\\.(H[A|2B|3|4]K\\d+(me\\d|ac))\\.(\\w+)\\.narrowPeak" 
+pattern <- "\\.(\\w+)\\.(H[A|2B|3|4]K\\d(me\\d|ac))\\.(.+)\\.narrowPeak" 
 tablist <- vector()
-donorlist <- vector()
 
 for (file in filenames) {
   tissue.id <- str_match(file,pattern)[,2]
   mark <- str_match(file,pattern)[,3]
   donor.id <- str_match(file,pattern)[,5]
-  donorlist <- c(donorlist,donor.id)
   if (mode == "Interindividual" && tissue == tissue.id) {
     code <- abbreviate(str_replace_all(tissue,"_",""))
-    tab.id <- paste(c("interin_",code,"_",mark),collapse="") # It contains the NAME of the variable
+    tab.id <- paste(c("interin.",code,".",donor.id),collapse="") # It contains the NAME of the variable
     if ((tab.id %in% tablist)==FALSE) {
       tablist <- c(tablist,tab.id)       
       assign(tab.id,windows)
     }
     tab.res <- eval(as.symbol(tab.id))
     tab.res <- data.frame(tab.res,chipseqscore(file))
-    colnames(tab.res)[ncol(tab.res)] <- paste("ind_",donor.id,sep="")
+    colnames(tab.res)[ncol(tab.res)] <- mark
     assign(tab.id,tab.res)
   }
-  if (mode == "Interindividual" && donor == donor.id) {
-    tab.id <- paste(c("intrain_",donor,"_",mark),collapse="") # It contains the NAME of the variable
-    if ((tab.id %in% tablist)==FALSE) {
-      tablist <- c(tablist,tab.id) 
-      assign(tab.id,windows)
-    }  
 }
-
-donorlist <- unique(donorlist)
 
 ###################################
 ## EPIGENOMIC DIVERSITY ANALYSIS ##
 ###################################
 
-result <- windows
-for (tab in tablist) {
-  dbWriteTable(con,name=tab,value=eval(as.symbol(tab)),row.names=F,overwrite=T)
-  markmean <- apply(eval(as.symbol(tab))[,-(1:3)],1,mean)
-  markvar <-  apply(eval(as.symbol(tab))[,-(1:3)],1,var)
-  result <- cbind(result,markmean,markvar)
-  colnames(result)[ncol(result)-1] <- paste(unlist(str_split(tab,"\\_"))[3],"_mean",sep="")
-  colnames(result)[ncol(result)] <- paste(unlist(str_split(tab,"\\_"))[3],"_var",sep="")
-  }
-
-result.name <- paste(substr(mode,1,7),"_",code,sep="")
-dbWriteTable(con,result.name,result,row.names=F,overwrite=T)
-
-if (mode == "Interindividual") {
-  sqlquery <- paste("INSERT INTO Interindividual VALUES('"
-                  ,result.name,"','",tissue,"','",length(donorlist),"','hg19','Roadmap');",sep="")
-} else if (mode == "Intraindividual") {
-  sqlquery <- paste("INSERT INTO Intraindividual VALUES('"
-                    ,result.name,"','",donor,"','",sex,"','",length(donorlist),"','hg19','Roadmap');",sep="")
+for (sample in tablist) {
+  
 }
-invisible(dbSendQuery(con,sqlquery))
 
-invisible(dbDisconnect(con))
 
 ######################
 ## FEATURE ANALYSIS ##
@@ -237,3 +197,5 @@ if (mode=="all") {
     print(chisq.test(evaluation))
   }
 }
+  
+invisible(dbDisconnect(con))

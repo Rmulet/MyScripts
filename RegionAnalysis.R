@@ -1,6 +1,6 @@
 #!/usr/bin/Rscript
-# setwd("~/Documents/2_GenomicsData/TestPopGenome")
-# filename <- "merge.vcf.gz"; ini <- 31768006; end <- 31899628; wsize <- 200
+#setwd("~/Documents/2_GenomicsData/TestPopGenome")
+#filename <- "merge.vcf.gz"; ini <- 31768006; end <- 31899628; wsize <- 200
 
 # Region Analysis v0.7 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
