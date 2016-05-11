@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/3_EpigenomicsData/Roadmap")
-# file <- "BI.Adipose_Nuclei.H3K4me1.7.narrowPeak"
+# setwd("~/Documents/3_EpigenomicsData/Roadmap/Intraindividual")
+# file <- mode <- "Intraindividual"; donor <- "STL003"
 
 # Epigenetic Analysis Pipeline, v0.3 - This script compares windows contained in a MySQL database with
 # ChIP-seq data in narrowPeak format to investigate what fraction of each window falls within a peak.
@@ -19,7 +19,7 @@ args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
 usage <- function() {
   cat ("\nProgram: Epigenetic Analysis Pipeline, v0.3 - This script compares windows contained in a MySQL database with ChIP-seq data in narrowPeak format to investigate what fraction of each window falls within a peak.\n")
   cat ("\nUsage: EpiAnalysis.R [Mode] [Donor/Tissue]\n")
-  cat ("File name format (Roadmap style): [University].[CellType].[Mark].[Donor]\n\n")
+  cat ("File name format (Roadmap style): [University].[CellType].Bisulfite-Seq.[Donor]\n\n")
   quit()
 }
 
@@ -29,13 +29,13 @@ if (args[1] == "-h" || args[1] == "--help") {usage()}
 mode <- args[1] # Operation mode of the script
 if (mode == "Intraindividual") {
   donor <- args[2] # Name of the donor
-  print("Intraindividual mode selected")
+  cat("Intraindividual mode selected")
 } else if (mode == "Interindividual") {
   tissue <- args[2] 
-  print("Interindividual mode selected")
+  cat("Interindividual mode selected")
 } else if (mode == "Interspecies") {
   tissue <- args[2]
-  print("Interspecies mode selected")
+  cat("Interspecies mode selected")
 }
 
 ################################################
@@ -61,7 +61,7 @@ windows <- dbFetch(res)
 invisible(dbClearResult(res)) # Frees resources associated with the query
 coords <- trimws(do.call(rbind,strsplit(windows[,2],"-"))) # Separate the coordinates bound by "-"
 coords <- apply(coords,2,as.numeric) # Make the variable numeric
-windows <- data.frame(paste("chr",windows[,1],sep=""),coords)
+windows <- data.frame(paste("chr",windows[,1],sep=""),coords) # Add 'chr' to the number --> might not be necessary
 names(windows) <- headerbed
 grwindows <- with(windows,GRanges(chr,IRanges(start,end)))
 
@@ -110,7 +110,7 @@ chipseqscore <- function(file) {
     spans <- spans[-rep[2:length(rep)]] # Remove the values of the repeated occurrences
   }  
   # PRINT VALUES 
-  values <- spans/200*100
+  values <- spans/200*100 # MUST REPLACE WITH VARIABLE
   percentages <- numeric(queryLength(overlap))
   percentages[query] <- values
   return(percentages)
@@ -127,57 +127,83 @@ filenames <- list.files(".", pattern="*.narrowPeak", full.names=TRUE) # Files in
 pattern <- "\\.(\\w+)\\.(H[A|2B|3|4]K\\d+(me\\d|ac))\\.(\\w+)\\.narrowPeak" 
 tablist <- vector()
 donorlist <- vector()
+tissuelist <- data.frame(Tissue=character(0),Abbreviation=character(0),stringsAsFactors=FALSE)
 
 for (file in filenames) {
   tissue.id <- str_match(file,pattern)[,2]
   mark <- str_match(file,pattern)[,3]
   donor.id <- str_match(file,pattern)[,5]
-  donorlist <- c(donorlist,donor.id)
-  if (mode == "Interindividual" && tissue == tissue.id) {
-    code <- abbreviate(str_replace_all(tissue,"_",""))
-    tab.id <- paste(c("interin_",code,"_",mark),collapse="") # It contains the NAME of the variable
-    if ((tab.id %in% tablist)==FALSE) {
-      tablist <- c(tablist,tab.id)       
-      assign(tab.id,windows)
-    }
-    tab.res <- eval(as.symbol(tab.id))
-    tab.res <- data.frame(tab.res,chipseqscore(file))
-    colnames(tab.res)[ncol(tab.res)] <- paste("ind_",donor.id,sep="")
-    assign(tab.id,tab.res)
+  if (anyNA(c(tissue.id,mark,donor.id))) {
+    stop(sprintf("File %s does not follow the required pattern. Please check with '-h' or '--help'",file))
   }
-  if (mode == "Interindividual" && donor == donor.id) {
-    tab.id <- paste(c("intrain_",donor,"_",mark),collapse="") # It contains the NAME of the variable
-    if ((tab.id %in% tablist)==FALSE) {
-      tablist <- c(tablist,tab.id) 
-      assign(tab.id,windows)
-    }  
+  if (mode == "Interindividual" && tissue == tissue.id) {
+    code <- abbreviate(str_replace_all(tissue.id,"_","")) # Summary table
+    tab.id <- paste(c("interin_",code,"_",mark),collapse="") # It contains the NAME of the variable
+    col.id <- paste("ind_",donor.id,sep="")  
+    donorlist <- c(donorlist,donor.id)
+  } else if (mode == "Intraindividual" && donor == donor.id) {
+    code <- donor.id  # Summary table
+    tab.id <- paste(c("intrain_",code,"_",mark),collapse="") # It contains the NAME of the variable
+    col.id <- abbreviate(str_replace_all(tissue.id,"_",""))
+    tissuelist[nrow(tissuelist)+1,] <- c(tissue.id,col.id)
+  } else if (mode == "Interspecies" && tissue == tissue.id) {
+    code <- abbreviate(str_replace_all(tissue.id,"_","")) # Summary table
+    tab.id <- paste(c("intersp_",code,"_",mark),collapse="") # It contains the NAME of the variable
+    col.id <- paste("ind_",donor.id,sep="")  
+    donorlist <- c(donorlist,donor.id)
+  } else {next} # If it does not fulfill any condition above, next cycle
+  
+  if ((tab.id %in% tablist)==FALSE) {
+    tablist <- c(tablist,tab.id)       
+    assign(tab.id,windows)
+  }
+  tab.res <- eval(as.symbol(tab.id))
+  tab.res <- data.frame(tab.res,chipseqscore(file))
+  colnames(tab.res)[ncol(tab.res)] <- col.id
+  assign(tab.id,tab.res)
 }
 
+print(tablist)
 donorlist <- unique(donorlist)
+tissuelist <- unique(tissuelist)
 
 ###################################
 ## EPIGENOMIC DIVERSITY ANALYSIS ##
 ###################################
 
 result <- windows
-for (tab in tablist) {
+for (tab in tablist) { 
+  tab.res <- eval(as.symbol(tab))
+  if (length(tab.res) < 5) { # Histones analyzed in only one tissue/individual (can be adjusted)
+    if (mode == "Intraindividual") {
+      cat (sprintf("Please provide more than one tissue for histone %s\n",unlist(str_split(tab,"\\_"))[3]))
+    } else if (mode == "Interindividual") {
+      cat (sprintf("Please provide more than one donor for histone %s\n",unlist(str_split(tab,"\\_"))[3]))
+    }
+   next
+  }
+  # We upload one table for each histone and calculate the mean and the variance
   dbWriteTable(con,name=tab,value=eval(as.symbol(tab)),row.names=F,overwrite=T)
-  markmean <- apply(eval(as.symbol(tab))[,-(1:3)],1,mean)
-  markvar <-  apply(eval(as.symbol(tab))[,-(1:3)],1,var)
+  markmean <- apply(tab.res[,-(1:3)],1,mean)
+  markvar <-  apply(tab.res[,-(1:3)],1,var)
   result <- cbind(result,markmean,markvar)
   colnames(result)[ncol(result)-1] <- paste(unlist(str_split(tab,"\\_"))[3],"_mean",sep="")
   colnames(result)[ncol(result)] <- paste(unlist(str_split(tab,"\\_"))[3],"_var",sep="")
-  }
-
+}
+# Then we upload the mean and the variance in that histone
 result.name <- paste(substr(mode,1,7),"_",code,sep="")
 dbWriteTable(con,result.name,result,row.names=F,overwrite=T)
+marks <- unique(sapply(strsplit(colnames(result)[4:length(colnames(result))],"_"),'[',1))
+marks <- paste(marks,collapse=";")
 
 if (mode == "Interindividual") {
   sqlquery <- paste("INSERT INTO Interindividual VALUES('"
-                  ,result.name,"','",tissue,"','",length(donorlist),"','hg19','Roadmap');",sep="")
+                    ,result.name,"','",tissue,"','",length(donorlist),"','hg19','Roadmap','",marks,"');",sep="")
+  print(tissue,code)
 } else if (mode == "Intraindividual") {
   sqlquery <- paste("INSERT INTO Intraindividual VALUES('"
-                    ,result.name,"','",donor,"','",sex,"','",length(donorlist),"','hg19','Roadmap');",sep="")
+                    ,result.name,"','",donor,"','","Unknown","','",nrow(tissuelist),"','hg19','Roadmap','",marks,"');",sep="")
+  print(tissuelist)
 }
 invisible(dbSendQuery(con,sqlquery))
 
@@ -190,9 +216,8 @@ invisible(dbDisconnect(con))
 # This module of the function attempts to find a correlation between windows with
 # epigenetic marks and genomic features such as genes. 
 
-system("cat chr22.gff | sed 's/^22/chr22/g' > Chr22.gff")
-gff <- read.table('Chr22.gff',header=FALSE)[,c(1,3,4,5)]
-names(gff) <- c("chr","feature","start","end")
+#gff <- read.table('Chr22.gff',header=FALSE)[,c(1,3,4,5)]
+#names(gff) <- c("chr","feature","start","end")
 
 evaluate <- function(gff,selection="gene",mode="any") { 
 
@@ -237,3 +262,5 @@ if (mode=="all") {
     print(chisq.test(evaluation))
   }
 }
+
+# https://github.com/rstats-db/RMySQL/issues/140

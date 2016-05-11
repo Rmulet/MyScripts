@@ -1,11 +1,14 @@
 #!/usr/bin/Rscript
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.vcf.gz"; ini <- 31768006; end <- 31899628; wsize <- 200
+#filename <- "merge.vcf.gz"; ini <- 31768006; end <- 31899628; wsize <- 1000
 
 # Region Analysis v0.7 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
+# WARNING: The program is mean to be called from the terminal (VCFmerger.sh)
 # UPDATE: 1) Tests of neutrality added; 2) MKT removed; 3) SFS is calculated from the derived allele.
 # UPDATE2: Monomorphic positions in humans are not considered for SFS calculation. Mean is replaced with histogram.
+# UPDATE3: Windows are converted into 0-based (BED format) to facilitate the following analyses. Instead of a single
+# column with the range, two columns (start,end) are created.
 
 start.time <- Sys.time()
 
@@ -19,10 +22,11 @@ args <- commandArgs() # Import arguments from command line
 filename <- args[6] # Name of the file specified after the script
 ini <- args[7]; end <- args[8] # Window range
 wsize <- as.numeric(args[9]) # Window size
-print(typeof(wsize))
 
 # We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # Optionally, we can provide a GFF file with annotations, but it's not necessary here.
+# Numcols indicates the number of SNPs read into the RAM at once. For a sample of 1000 individuals,
+# 10,000 are recommended on a 4 GB RAM computer.
 region <- readVCF(filename,numcols=5000,tid="22",from=ini,to=end,include.unknown=TRUE)
 
 ## DEFINE POPULATION/OUTGROUP ##
@@ -40,11 +44,12 @@ region <- set.outgroup(region,chimp)
 
 ## SLIDING WINDOWS ##
 
-# Sliding windows of size = 200. Type=2 for genomic regions (type=1 for SNPs)
+# Sliding windows of size = wsize (1000 by default). Type=2 for genomic regions (type=1 for SNPs).
 
 slide <- sliding.window.transform(region,width=wsize,jump=wsize,type=2) # Create windows in the object slide.
-windows <- slide@region.names # Window labels
-windows <- trimws(unlist(strsplit(windows,":"))) # Remove the ":"
+windows <- unlist(strsplit(slide@region.names,":")) # Retrieves window labels without ":"
+windows <- trimws(do.call(rbind,strsplit(windows,"-"))) # Separates in start and end columns
+windows <- apply(windows,2,as.numeric) # Makes the windows variable numeric
 
 ################
 ## STATISTICS ##
@@ -84,7 +89,7 @@ measures <- function(object) {
   tabsum <- data.frame(S=numeric(0),Pi=numeric(0),SFS=numeric(0),Divsites=numeric(0),D=numeric(0),K=numeric(0),Unknown=numeric(0)) 
 
   # LOOP TO READ THE WINDOWS IN SLIDE VARIABLE:
-  for (window in 1:length(windows)) {
+  for (window in 1:nrow(windows)) {
     # DETERMINE SEGREGATING SITES (EXCLUDING OUTGROUP)
     bial <- get.biallelic.matrix(slide,window) # Biallelic matrix
     if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
@@ -98,11 +103,11 @@ measures <- function(object) {
     misshuman <- colSums(is.na(bialhuman)) # Sites missing in humans
     bialhuman <- bialhuman[,misshuman == 0,drop=FALSE] # Remove missing (not expected)
     # DETERMINE M (EXCLUDING MISSING AND POLYALLELIC)
-    win <- as.numeric(strsplit(windows[window],"-")[[1]][1])
+    winstart <- windows[window,1] # Select the start position in that window
     # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
     if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
       polyal <- region@region.data@polyallelic.sites[[1]] # Positions of all polyalleles
-      polysites <- sum(!is.na(match(polyal,win:(win+wsize)))) # Number in that window
+      polysites <- sum(!is.na(match(polyal,winstart:(winstart+wsize)))) # N polyallelic sites in that window
     }
     else {
       polysites <- 0 # If not available, we asumme 0
@@ -118,7 +123,7 @@ measures <- function(object) {
       freqs <- apply(bialhuman,2,table)
       k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
     }
-    # CALCULATE SFS MEAN:
+    # CALCULATE SITE FREQUENCY SPECTRUM (SFS):
     # When there is an outgroup, missing positions are eliminated in MAF, but not in the biallelic matrix:
     # the indices of the windows do not match those in the totalMAF variable. Instead, we have to 
     # use the names of the variable (MAFsites). We filter to exclude monomorphic sites.
@@ -154,18 +159,18 @@ measures <- function(object) {
 ## INTEGRATION OF NEUTRALITY, DIVERSITY AND DIVERGENCE METRICS ## 
  
 regiondata <- measures(slide)
-S2 <- slide@n.segregating.sites[,1]/200 # Segretaging sites excluding unknowns
-Tajima.D <- slide@Tajima.D[,1]/200
-FuLi.F <- slide@Fu.Li.F[,1]/200
-theta <- slide@theta_Watterson[,1]/200
+S2 <- slide@n.segregating.sites[,1]/wsize # Segretaging sites excluding unknowns
+Tajima.D <- slide@Tajima.D[,1]/wsize
+FuLi.F <- slide@Fu.Li.F[,1]/wsize
+theta <- slide@theta_Watterson[,1]/wsize
 regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima.D,FuLi.F,regiondata[,3:7])
 
 ######################
 ## DATA EXPORTATION ##
 ######################
 
-# We add the chromosome info and the windows coordinates:
-export <- cbind(Chr=rep(22,length(windows)),Window=windows,regiondata)
+# We add the chromosome info and the windows coordinates. Convert to BED format, which is 0-based. 
+export <- cbind(Chr=rep("chr22",nrow(windows)),Window=windows[,1]-1,regiondata)
 
 suppressMessages(library(DBI))
 suppressMessages(library(RMySQL))

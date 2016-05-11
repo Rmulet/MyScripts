@@ -6,7 +6,8 @@
 # WARNING: This script requires the usage of the latest experimental version of BCFTOOLS, available at http://pd3.github.io/bcftools/
 # WARNING: RegionAnalysis.R is assumed to be in an environment variable. If not, modify the address.
 
-# UPDATE: Argument parsing has been improved. Window size = 200 by default.
+# UPDATE: Argument parsing has been improved. Window size = 1000 by default. Though 200 was originally proposed based on the paper by 
+# Xiao et al., it was adjusted to 1000 for the sake of statistical power. The window size was assessed with 'WinEvaluation.R'.
 
 # Makes sure that that no repeated rows are added
 mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
@@ -15,7 +16,7 @@ display_usage() {
 	echo -e "\nThis script merges regions of two compressed VCF files defined in a BED file using BCFtools. To work, it must be provided with one BED file containing positions in the 2nd and 3rd columns, and two VCF files." 
 	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs]" 
 	echo -e "\nOptions:\n -c, --cnvs \t Remove copy number variants (CNV) from the 1000GP file,\n\t\t which may extend beyond the limits of the interval [False]" 
-	echo -e " -w, --window \t Specifies the size of the window to be analyzed [200]"
+	echo -e " -w, --window \t Specifies the size of the window to be analyzed [1000]"
 	} 
 
 #####################################
@@ -68,7 +69,7 @@ fi
 
 # OPTIONAL ARGUMENTS:
 
-WINDOW=200
+WINDOW=1000
 
 while [[ $# > 0 ]]
 do
@@ -114,7 +115,7 @@ do
 	tabix -p vcf merge.$k.vcf.gz # Tabixing for analysis with PopGenome
 
 	# R PROCESSING:
-	RegionAnalysis.R merge.$k.vcf.gz $pos1 $pos2 $WINDOW >/dev/null # Avoid the message visualizatio
+	RegionAnalysis.R merge.$k.vcf.gz $pos1 $pos2 $WINDOW $chrom >/dev/null # Avoid the message visualizatio
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	echo -e "Analysis with R complete. Data exported to the MySQL database."
 	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
