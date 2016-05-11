@@ -8,6 +8,7 @@
 
 # UPDATE: Argument parsing has been improved. Window size = 1000 by default. Though 200 was originally proposed based on the paper by 
 # Xiao et al., it was adjusted to 1000 for the sake of statistical power. The window size was assessed with 'WinEvaluation.R'.
+# NOTE: Accessibility masks downloaded from: ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
 
 # Makes sure that that no repeated rows are added
 mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
@@ -98,13 +99,15 @@ while read chrom pos1 pos2 level
 do
 	# EXTRACT BED INFORMATION
 	chrom="${chrom##*[A-Za-z]}" # To extract the chromosome number
-	echo $k
-	echo $chrom $pos1 $pos2 
+	#echo $chrom $pos1 $pos2 
 	if [ "$(($pos2 - $pos1))" -le "$WINDOW" ]; then # If size region < size window, there is no need to examine it 
 		echo -e "$pos2 - $pos1 is inferior to $WINDOW. This segment will be skipped."
 		continue
 	fi	
 	# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
+	# The genome accessibility mask is in exclusive 1-based format, i.e. the last position is not included [half open]. 
+	# Since bcftools assumes inclusive 1-based format [closed], we subtract 1 from the end coordinate.
+	pos2=$((pos2-1)) # The last base is included by BCFtools
 	if [ "$CNVS" == "CNVS" ] ; then
 		bcftools merge -Ov --missing-to-ref -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.$k.vcf
 		bgzip merge.$k.vcf
@@ -114,8 +117,9 @@ do
 	echo -e "Files merged: merge.$k.vcf.gz generated"
 	tabix -p vcf merge.$k.vcf.gz # Tabixing for analysis with PopGenome
 
-	# R PROCESSING:
-	RegionAnalysis.R merge.$k.vcf.gz $pos1 $pos2 $WINDOW $chrom >/dev/null # Avoid the message visualizatio
+	# R ANALYSIS OF NUCLEOTIDE VARIATION:
+	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW >/dev/null # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	echo -e "Analysis with R complete. Data exported to the MySQL database."
 	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
