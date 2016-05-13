@@ -1,7 +1,8 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/3_EpigenomicsData/Roadmap/Methylation")
-# mode <- "Intraindividual"; donor <- "STL003"
+# file <- "GSM1010978_UCSD.Left_Ventricle.Bisulfite-Seq.STL001.wig"
+# file <- "Left_ventricle.BS-Seq.STL001.bw"
 
 ######################
 ## ARGUMENT PARSING ##
@@ -35,20 +36,21 @@ if (mode == "Intraindividual") {
 ## ACCESS MYSQL DATABASE AND RETRIEVE WINDOWS ##
 ################################################
 
+headerbed <- c("chr","start","end")
+
 start <- Sys.time()
 # WINDOWS IN MYSQL:
 suppressMessages(library(RMySQL))
-# Retrieve data from MySQL:
+# Retrieve data from MySQL and put in GRanges format
 con <- dbConnect(RMySQL::MySQL(),
                  user="root", password="RM333",
                  dbname="PEGH", host="localhost")
-res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics")
+res <- dbSendQuery(con, "SELECT Chr,Window FROM Genomics")
 windows <- dbFetch(res)
-invisible(dbClearResult(res)) # Frees resources associated with the query
-windows[,2:3] <- apply(windows[,2:3],2,as.numeric) # Make the variable numeric
-wsize <- windows[1,3]-windows[1,2] # Windows length
-chr <- substr(windows[1,1],4,nchar(windows[1,1])) # Chromosome number
-ntotal <- nrow(windows) # Number of windows
+# win <- cbind(windows[,1],trimws(do.call(rbind,strsplit(windows[,2],"-"))))
+# Instead of the above, we do this becaused windows are 1-based (PopGenome):
+win <- apply(do.call(rbind,strsplit(windows[,2],"-")),2,as.numeric)
+win <- cbind(windows[,1],win[,1],win[,2]+1) # Only because PopGenome is 1-based
 
 #######################################
 ## FUNCTION TO CONVERT WIG TO BIGWIG ##
@@ -60,14 +62,14 @@ ntotal <- nrow(windows) # Number of windows
 # For 'WigtoBigWig', chromosome sizes are needed. They can be retrieved with
 # the aplication 'fetchChromSizes', available in the first directory.
 
-wigextractor <- function(ini=1,step=ntotal) { # By default, takes all windows
+wigextractor <- function(chr=22,ini=1,step=nrow(win)) { # By default, takes all windows
   library(stringr)
   pattern <- "\\.(\\w+)\\.Bisulfite-Seq.(\\w+)\\."  # Add .wig if used here
   filenames <- list.files(".", pattern="*.wig.gz", full.names=TRUE) # Files in the folder
   samples <- vector()
   for (file in filenames) {
     # EXTRACT INFORMATION FROM THE FILE NAME
-    filechr <- paste(substr(file,1,nchar(file)-2),chr,sep="")
+    filechr <- paste(substr(file,1,nchar(file)-2),"chr22",sep="")
     out <- paste(substr(file,1,nchar(file)-7),".bw",sep="")
     tissue.id <- str_match(file,pattern)[,2] # Before mark
     donor.id <- str_match(file,pattern)[,3] # After mark
@@ -80,14 +82,15 @@ wigextractor <- function(ini=1,step=ntotal) { # By default, takes all windows
     samples <- c(samples,sample)
     # IF NECESSARY, CREATE BIGWIG:
     if (file.exists(out) == FALSE) {
-      # Select only rows of the chromosome of interest [chr22]:
-      system(sprintf("gunzip -c %s | awk '/chrom=chr%d/{p=1}/chrom=chr[^%d]/{p=0}p' > %s",file,chr,chr,filechr))
+      # Select only 'chr22' rows:
+      system(sprintf("gunzip -c %s | awk '/chrom=chr%d/{p=1}/chrom=chr[^22]/{p=0}p' > %s",file,chr,filechr))
       # Transform wig to bigWig:
       system(sprintf("wigToBigWig %s hg19.chrom.sizes %s",filechr,out))  
     }
     # EXTRACT INFORMATION IN WINDOWS:
     # Create 'windows.bed' file for 'bwtools':
-    write.table(windows[ini:(ini+step-1),],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+    write.table(win[ini:(ini+step-1),],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+    system("sed -i 's/^22/chr22/g' windows.bed") # Only because we don't have "chr"
     # Import as a table to R:
     system(sprintf("bwtool extract bed windows.bed %s %s -decimals=3",out,paste(out,".wn",sep="")))
     tab <- read.table(paste(out,".wn",sep=""),stringsAsFactors = FALSE)
@@ -100,14 +103,14 @@ wigextractor <- function(ini=1,step=ntotal) { # By default, takes all windows
 ## FUNCTION TO MEASURE WINDOW METHYLATION ##
 ############################################
 
-methylscore <- function(nwin=ntotal) { # By default, it takes all the windows
+methylscore <- function(nwin=nrow(win)) { # By default, it takes all the windows
   # Preallocate vectors containing the results
   meanavg <- numeric(nwin)
   varavg <- numeric(nwin)
   meanvar <- numeric(nwin)
   # Compares the n-line of each window across samples (tissues/donors/species)
   for (window in 1:nwin) {
-    mat <- matrix(nrow=0,ncol=wsize) # Epigenetic diversity matrix
+    mat <- matrix(nrow=0,ncol=200) # Epigenetic diversity matrix
     for (sample in samples) { # We add every sample to the matrix
       mat <- rbind(mat,eval(as.symbol(sample))[[window]])
     }
@@ -132,18 +135,14 @@ methylscore <- function(nwin=ntotal) { # By default, it takes all the windows
 ## METHYLATION COMPARATIVE ANALYSIS ##
 ######################################
 
-if (ntotal*wsize < 500000) { # If the region contains < 500 kb, all is processed at once
+if (nrow(win) < 500) {
   samples <- wigextractor()
   methyldata <- methylscore()
-} else { # If the region contains > 500 kb, the analysis is fractioned
+} else {
   methyldata <- data.frame(MethLevel=numeric(0),MethLevelVar=numeric(0),MethVar=numeric(0))
-  chunk <- 100
-  for (i in seq(1,ntotal,by=chunk)) { # REVIEW INTERVAL!!!!
-    if ((n-i+1) < chunk) {
-      chunk <- ntotal%%chunk
-    }
-    samples <- wigextractor(ini=i,step=chunk)
-    methyldata <- rbind(methyldata,methylscore(nwin=chunk))
+  for (i in seq(1,nrow(win),by=100)) {
+    samples <- wigextractor(chr=22,ini=i)
+    methyldata <- rbind(methyldata,methylscore(nwin=100))
   }
 }
 

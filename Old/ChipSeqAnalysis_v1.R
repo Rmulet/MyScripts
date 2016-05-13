@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/3_EpigenomicsData/Roadmap/Intraindividual")
-# mode <- "Intraindividual"; donor <- "STL003"
+# file <- mode <- "Intraindividual"; donor <- "STL003"
 
 # Epigenetic Analysis Pipeline, v0.3 - This script compares windows contained in a MySQL database with
 # ChIP-seq data in narrowPeak format to investigate what fraction of each window falls within a peak.
@@ -23,7 +23,7 @@ usage <- function() {
   quit()
 }
 
-if (length(args) < 1) {print("Please provide an adequate number of arguments");usage()}
+if (length(args) < 1) {usage()}
 if (args[1] == "-h" || args[1] == "--help") {usage()}
 
 mode <- args[1] # Operation mode of the script
@@ -42,6 +42,8 @@ if (mode == "Intraindividual") {
 ## ACCESS MYSQL DATABASE AND RETRIEVE WINDOWS ##
 ################################################
 
+headerbed <- c("chr","start","end")
+
 if (suppressMessages(!require("GenomicRanges"))) {
   print ("The 'GenomicRanges' package is missing and will be installed")
   source("https://bioconductor.org/biocLite.R")
@@ -54,12 +56,13 @@ suppressMessages(library(RMySQL))
 con <- dbConnect(RMySQL::MySQL(),
                  user="root", password="RM333",
                  dbname="PEGH", host="localhost")
-res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics")
+res <- dbSendQuery(con, "SELECT Chr,Window FROM Genomics")
 windows <- dbFetch(res)
 invisible(dbClearResult(res)) # Frees resources associated with the query
-windows[,2:3] <- apply(windows[,2:3],2,as.numeric) # Make the variable numeric
-wsize <- windows[1,3]-windows[1,2] # Windows length
-
+coords <- trimws(do.call(rbind,strsplit(windows[,2],"-"))) # Separate the coordinates bound by "-"
+coords <- apply(coords,2,as.numeric) # Make the variable numeric
+windows <- data.frame(paste("chr",windows[,1],sep=""),coords) # Add 'chr' to the number --> might not be necessary
+names(windows) <- headerbed
 grwindows <- with(windows,GRanges(chr,IRanges(start,end)))
 
 #####################################################
@@ -70,9 +73,9 @@ chipseqscore <- function(file) {
   options(digits=3)
   # IMPORT AND PROCESS THE FILE
   # Processing the file with system commands is much faster than R.
-  temp <- system(sprintf("gunzip -c %s | grep '%s' | cut -f1,2,3 |  sort",file,windows[1,1]),intern=TRUE) 
+  temp <- system(sprintf("gunzip -c %s | grep 'chr22' | cut -f1,2,3 |  sort",file),intern=TRUE) 
   peaks <- read.table(textConnection(temp),sep="\t")
-  names(peaks) <- c("chr","start","end")
+  names(peaks) <- headerbed
   grpeaks <- with(peaks,GRanges(chr,IRanges(start,end))) # Transform to IRanges format
   
   # IDENTIFY OVERLAPS BETWEEN PEAKS AND WINDOWS
@@ -107,7 +110,7 @@ chipseqscore <- function(file) {
     spans <- spans[-rep[2:length(rep)]] # Remove the values of the repeated occurrences
   }  
   # PRINT VALUES 
-  values <- spans/wsize*100 # Percentage of overlap in the interval
+  values <- spans/200*100 # MUST REPLACE WITH VARIABLE
   percentages <- numeric(queryLength(overlap))
   percentages[query] <- values
   return(percentages)
@@ -188,7 +191,6 @@ for (tab in tablist) {
   colnames(result)[ncol(result)] <- paste(unlist(str_split(tab,"\\_"))[3],"_var",sep="")
 }
 # Then we upload the mean and the variance in that histone
-result[,4:ncol(result)] <- apply(result[,4:ncol(result)],2,round,5) # WARNING: OPTIONAL
 result.name <- paste(substr(mode,1,7),"_",code,sep="")
 dbWriteTable(con,result.name,result,row.names=F,overwrite=T)
 marks <- unique(sapply(strsplit(colnames(result)[4:length(colnames(result))],"_"),'[',1))
