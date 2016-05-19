@@ -17,7 +17,11 @@ start.time <- Sys.time()
 ## IMPORT AND PREPARE DATA ##
 #############################
 
-suppressMessages(library("PopGenome",quietly=TRUE))
+if (suppressMessages(!require("PopGenome"))) { # Can be removed
+  print ("The 'PopGenome' package is missing and will be installed")
+  install.packages("PopGenome")
+  library("PopGenome")
+}
 
 args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
 filename <- args[1] # Name of the file specified after the script
@@ -161,8 +165,8 @@ measures <- function(object) {
  
 regiondata <- measures(slide)
 S2 <- slide@n.segregating.sites[,1] # Segretaging sites excluding unknowns
-Tajima.D <- round(slide@Tajima.D[,1]/wsize,7)
-FuLi.F <- round(slide@Fu.Li.F[,1]/wsize,7)
+Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) # 
+FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
 if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima.D,FuLi.F,regiondata[,3:7])
   } else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima.D=0,FuLi.F=0,regiondata[,3:7]) }
@@ -181,8 +185,8 @@ suppressMessages(library(DBI))
 suppressMessages(library(RMySQL))
 
 con <- dbConnect(RMySQL::MySQL(),
-                 user="root", password="RM333",
-                 dbname="PEGH", host="localhost")
+                 user="roger", password="RM333",
+                 dbname="PEGH", host="158.109.215.40")
 
 first <- !dbExistsTable(con,"Genomics")
 

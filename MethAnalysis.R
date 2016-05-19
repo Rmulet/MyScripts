@@ -3,6 +3,8 @@
 # setwd("~/Documents/3_EpigenomicsData/Roadmap/Methylation")
 # mode <- "Intraindividual"; donor <- "STL003"
 
+# wget -nc -nd -r -l0 -np -A "*STL00*" http://egg2.wustl.edu/roadmap/data/byFileType/peaks/unconsolidated/narrowPeak/
+
 ######################
 ## ARGUMENT PARSING ##
 ######################

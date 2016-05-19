@@ -20,9 +20,15 @@ dat.hist <- vector()
 for (wsize in wsizes) {
   slide <- sliding.window.transform(region,width=wsize,jump=wsize,type=2)
   varnum <- unlist(lapply(slide@SLIDE.POS,length))
-  hist(varnum,xlab="Number of variants",main=sprintf("Window %d",wsize))
+  hist(varnum,xlab="Number of variants",breaks=6,main=sprintf("Window %d",wsize),col="steelblue",lty="blank")
   dat.hist <- c(dat.hist,median(varnum))
 }
 dev.off()
-plot(dat.hist ~ wsizes,xlab="Window size",ylab="Median numver of variants",xaxt="n")
-axis(1,at=wsizes)
+data <- data.frame(Wsize=wsizes,Median=dat.hist)
+qplot(y=Median,x=Wsize,data=data)
+# plot(dat.hist ~ wsizes,xlab="Window size",ylab="Median number of variants",xaxt="n")
+# axis(1,at=wsizes)
+qplot(y=Median,x=Wsize,data=data,geom=c("point","smooth"),ylab="Median number of variants",
+      main="Number of variants ~ window size") + theme(plot.title = element_text(face="bold",margin = margin(t = 10, b = 10))) +
+  theme(axis.title.x = element_text(color="forestgreen",margin=margin(t=10)),axis.title.y = element_text(color="forestgreen",margin=margin(r=10))) + 
+  theme(plot.margin = unit(c(0.5,0.5,0.5,0.5),"cm")) + scale_x_discrete(name ="Window size", limits=wsizes)
