@@ -117,8 +117,8 @@ chipseqscore <- function(file) {
   }  
   # PRINT VALUES 
   values <- spans/wsize*100 # Percentage of overlap in the interval
-  percentages <- numeric(queryLength(overlap))
-  percentages[query] <- values
+  percentages <- numeric(queryLength(overlap)) # Vector of the same length as number of windows
+  percentages[query] <- values # Overlapping windows are replaced; others are 0
   return(percentages)
 }
 

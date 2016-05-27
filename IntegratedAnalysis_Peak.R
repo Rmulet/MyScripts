@@ -55,6 +55,7 @@ if (suppressMessages(!require("GenomicRanges"))) {
   print ("The 'GenomicRanges' package is missing and will be installed")
   source("https://bioconductor.org/biocLite.R")
   biocLite("GenomicRanges")
+  library("GenomicRanges")
 }
 # BED is 0-based, but GRanges is 1-based
 gffwindows <- data.frame(chr=windows[,1],start=windows[,2]+1,end=windows[,3])
@@ -281,7 +282,6 @@ if (length(metfiles) < 2) {
     if ((n-ini+1) < chunk) {
       # Create 'windows.bed' file for 'bwtools':
       chunk <- ntotal%%chunk
-      write.table(windows[ini:(ini+chunk-1),],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
     }
     write.table(windows[ini:(ini+chunk-1),],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
     bwfraction(step=chunk)
@@ -289,6 +289,7 @@ if (length(metfiles) < 2) {
   }
 }
 Sys.time() - start
+
 #############################
 ## DATA EXPORT TO MYSQL DB ##
 #############################

@@ -16,7 +16,7 @@ def display_usage():
 	print("\nThis script extracts the nucleotide in a given position of a FASTA file or the sequence in a range of positions.")
 	print ("\nUsage:\nBaseExtractor.py [FASTA sequence] [Options] [Positions] \n")
 	print ("\nOptions:\nDefault:\tReturns the nucleotide in a position or a range thereof.\n")
-	print ("-t/-tellme:/tReturns the line corresponding to a given position\n-l/-line:\tReturns the last nucleotide of a given line")
+	print ("-t/-tellme:\tReturns the line corresponding to a given position\n-l/-line:\tReturns the last nucleotide of a given line")
 
 # If less than two arguments supplied, display usage 
 if len(sys.argv) < 2:

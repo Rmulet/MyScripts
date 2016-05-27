@@ -43,8 +43,8 @@ suppressMessages(library(RMySQL))
 con <- dbConnect(RMySQL::MySQL(),
                  user="root", password="RM333",
                  dbname="PEGH", host="localhost")
-res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics")
-windows <- dbFetch(res)
+res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics_Pilot")
+windows <- dbFetch(res,n=-1) # n=-1 for no limit in records
 invisible(dbClearResult(res)) # Frees resources associated with the query
 windows[,2:3] <- apply(windows[,2:3],2,as.numeric) # Make the variable numeric
 wsize <- windows[1,3]-windows[1,2] # Windows size
@@ -72,6 +72,7 @@ wigtobw <- function() { # By default, takes all windows
         system(sprintf("wigToBigWig %s hg19.chrom.sizes %s",filechr,out))
         file.remove(filechr)
         }
+
 return(out)
 }
 
@@ -109,11 +110,26 @@ bwfraction <- function(ini=1,step=ntotal) {
 ## FUNCTION TO MEASURE EPIGENETIC VARIABILITY ##
 ################################################
 
+
+
+Theta <- function(S,m,n) { # S=Segregating sites; m=total sites; n=number of samples
+  summ <- 0
+  for (i in 1:(n-1)) {
+    summ <- summ + 1/i
+  }
+  theta <- (S/m)/summ
+  return(round(theta,7))
+}
+Pi <- function(k,m,n) { # Window number
+  comb <- choose(n,2) # Binomial coefficient = combination without repetition
+  pi <- k/(comb*m)
+  return(round(pi,7))
+}
+
 episcore <- function(nwin=ntotal) { # By default, it takes all the windows
   # Preallocate vectors containing the results
-  meanavg <- numeric(nwin)
-  varavg <- numeric(nwin)
-  meanvar <- numeric(nwin)
+  meanavg <- numeric(nwin); varavg <- numeric(nwin); meanvar <- numeric(nwin)
+  pi <- numeric(nwin); theta <- numeric(nwin); nsites <- numeric(nwin)
   # Compares the n-line of each window across samples (tissues/donors/species)
   for (window in 1:nwin) {
     mat <- matrix(nrow=0,ncol=wsize) # Epigenetic diversity matrix
@@ -121,6 +137,7 @@ episcore <- function(nwin=ntotal) { # By default, it takes all the windows
       mat <- rbind(mat,eval(as.symbol(sample))[[window]])
     }
     matclean <- mat[,complete.cases(t(mat))] # We remove positions with NA (non-meth/missing)
+    ## VARIANCE AND SIGNAL INTENSITY ## 
     if (dim(matclean)[2] == 0) { # No methylated positions in this region
       meanavg[window] <- 0
       varavg[window] <- 0
@@ -128,12 +145,34 @@ episcore <- function(nwin=ntotal) { # By default, it takes all the windows
       next
     }
     avg <- apply(matclean,1,mean) # Average of methylation in METHYLATION LOCI
-    meanavg[window] <- mean(avg)
-    varavg[window] <- var(avg)
-    posvar <- apply(matclean,2,var)
-    meanvar[window] <- mean(posvar)
+    meanavg[window] <- mean(avg) # Average of all samples
+    varavg[window] <- var(avg) # Variance of average across samples
+    posvar <- apply(matclean,2,var) # Variance across samples in each position
+    meanvar[window] <- mean(posvar) # Average variance across samples
+    ## METHYLATION POLYMORPHISM ESTIMATORS ##
+    if (mark == "Bisulfite-Seq") {
+      cpgsites <- apply(matclean,c(1,2),function(x){if(x>=0.7){x <- 1} # Assigns 1/0/0.5
+        else if(x < 0.7 && x > 0.3){x <- 0.5} else {0} })
+      m <- ncol(cpgsites) # Total CpG sites in the window (methylation loci)
+      n <- length(samples)*2 # "Diploid"
+      MCF <- cpgsites[,apply(cpgsites,2,function(x){!all(x==x[1])}),drop=FALSE]
+      print(window)
+      if (dim(MCF)[2] == 0) { # No differentially methylated positions in the region
+        pi[window] <- 0
+        theta[window] <- 0
+        nsites[window] <- 0
+      }
+      S <- ncol(MCF)
+      ki <- apply(MCF,2,function(x) {a <- table(x);
+        (sum(a[names(a) == 0])*2+sum(a[names(a) == 0.5]))*
+        (sum(a[names(a) == 1])*2+sum(a[names(a) == 0.5]))})
+      k <- sum(ki)
+      pi[window] <- Pi(k,m,n)
+      theta[window] <- Theta(S,m,n)
+      nsites[window] <- S
+    }
   }
-  epidata <- data.frame(Level=meanavg,LevelVar=varavg,Var=meanvar)
+  epidata <- data.frame(Pi=pi,Theta=theta,S=nsites,Level=meanavg,LevelVar=varavg,Var=meanvar)
   return(epidata)
 }
 
@@ -239,4 +278,7 @@ invisible(dbDisconnect(con))
 
 Sys.time() - start
 cat(c(ntotal*wsize,"bases"))
+
+
+#  The -log10(p-value) scores provide a convenient way to threshold signal (e.g. 2 corresponds to a p-value threshold of 1e-2), similar to what is used in identifying enriched regions (peak calling). We recommend using the signal confidence score tracks for visualization. A universal threshold of 2 provides good separation between signal and noise. Both types of signal tracks were also generated for the unconsolidated datasets using the same parameter settings described above.
  

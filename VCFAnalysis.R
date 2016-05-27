@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
 #filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; wsize <- 1000
-#filename <- "merge.vcf.gz"; ini <- 31768006-1; end <- 31899628; wsize <- 1000
+#filename <- "inspect.vcf.gz"; ini <- 22767120; end <- 22768120; wsize <- 1000
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
@@ -10,6 +10,7 @@
 # UPDATE2: Monomorphic positions in humans are not considered for SFS calculation. Mean is replaced with histogram.
 # UPDATE3: Windows are converted into 0-based (BED format). Instead of a single column with the range, two columns (start,end) 
 # are created. Generalization to multiple chromosomes is available.
+# UPDATE4: DAF instead of SFS. Dots to underscores for MySQL. DB name changeable.
 
 start.time <- Sys.time()
 
@@ -28,6 +29,7 @@ filename <- args[1] # Name of the file specified after the script
 chrom <- args[2] # Chromosome number
 ini <- as.numeric(args[3])-1; end <- args[4] # Window range. -1 from ini to include position 1.
 wsize <- as.numeric(args[5]) # Window size
+db <- args[6] # Name of the database [Genomics]
 
 # We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # Optionally, we can provide a GFF file with annotations, but it's not necessary here.
@@ -92,7 +94,7 @@ measures <- function(object) {
     return(round(pi,7))
   }
   # TABLE CONTAINING THE DATA
-  tabsum <- data.frame(S=numeric(0),Pi=numeric(0),SFS=numeric(0),Divsites=numeric(0),D=numeric(0),K=numeric(0),Unknown=numeric(0)) 
+  tabsum <- data.frame(S=numeric(0),Pi=numeric(0),DAF=numeric(0),Divsites=numeric(0),D=numeric(0),K=numeric(0),Unknown=numeric(0)) 
 
   # LOOP TO READ THE WINDOWS IN SLIDE VARIABLE:
   for (window in 1:nrow(windows)) {
@@ -106,8 +108,8 @@ measures <- function(object) {
     bialhuman <- bial[1:n,,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
     polym <- apply(bialhuman,2,sum)>0 # Sites polymorphic in humans: non REF (0) alleles
     bialhuman <- bialhuman[,polym,drop=F] # Remove sites monomorphic in humans
-    misshuman <- colSums(is.na(bialhuman)) # Sites missing in humans
-    bialhuman <- bialhuman[,misshuman == 0,drop=FALSE] # Remove missing (not expected)
+    misshuman <- colSums(is.na(bialhuman))>0 # Sites missing in humans (e.g. structural variants)
+    bialhuman <- bialhuman[,!misshuman,drop=FALSE] # Remove missing
     # DETERMINE M (EXCLUDING MISSING AND POLYALLELIC)
     winstart <- windows[window,1] # Select the start position in that window
     # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
@@ -129,7 +131,7 @@ measures <- function(object) {
       freqs <- apply(bialhuman,2,table)
       k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
     }
-    # CALCULATE SITE FREQUENCY SPECTRUM (SFS):
+    # CALCULATE SITE FREQUENCY SPECTRUM (SFS) / DERIVED ALLELE FREQUENCY (DAF):
     # When there is an outgroup, missing positions are eliminated in MAF, but not in the biallelic matrix:
     # the indices of the windows do not match those in the totalMAF variable. Instead, we have to 
     # use the names of the variable (MAFsites). We filter to exclude monomorphic sites.
@@ -139,8 +141,8 @@ measures <- function(object) {
       winsites <- windex[[window]][polym] # Sites in that window w/o unknowns and polymorphic in humans
     }
     winMAF <- totalMAF[[1]][1,winsites] # Frequencies in window (removing unknowns)
-    SFS <- hist(winMAF,seq(0.0,1,0.1),plot=F)$counts
-    SFS <- paste(SFS,collapse = ";")
+    DAF <- hist(winMAF,seq(0.0,1,0.1),plot=F)$counts
+    DAF <- paste(DAF,collapse = ";")
     # COUNT THE NUMBER OF UNKNOWNS IN THE OUTGROUP:
     unknowns <- sum(is.nan(bial[total,])) # Displayed as NaN in the biallelic matrix
     
@@ -155,7 +157,7 @@ measures <- function(object) {
     K <- round(-3/4*log(1-4/3*D),7) # Real divergence: Jukes and Cantor model
   
     ## ADD NEW ROW ##
-    newrow <- c(S,Pi(k,m,n),SFS,divsites,D,K,unknowns)
+    newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns)
     tabsum[nrow(tabsum)+1,] <- newrow
   }
   return(tabsum)  
@@ -168,8 +170,8 @@ S2 <- slide@n.segregating.sites[,1] # Segretaging sites excluding unknowns
 Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) # 
 FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
-if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima.D,FuLi.F,regiondata[,3:7])
-  } else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima.D=0,FuLi.F=0,regiondata[,3:7]) }
+if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,regiondata[,3:7])
+  } else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima_D=0,FuLi_F=0,regiondata[,3:7]) }
   
 ######################
 ## DATA EXPORTATION ##
@@ -188,13 +190,13 @@ con <- dbConnect(RMySQL::MySQL(),
                  user="roger", password="RM333",
                  dbname="PEGH", host="158.109.215.40")
 
-first <- !dbExistsTable(con,"Genomics")
+first <- !dbExistsTable(con,db)
 
-dbWriteTable(con,value=export,name="Genomics",row.names=F,append=T)
+dbWriteTable(con,value=export,name=db,row.names=F,append=T)
 
 if (first == TRUE) {
-  dbSendQuery(con,"ALTER TABLE Genomics CHANGE COLUMN start start VARCHAR(30);")
-  dbSendQuery(con,"ALTER TABLE Genomics ADD PRIMARY KEY (start);")
+  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
+  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
   }
 
 on.exit(dbDisconnect(con))

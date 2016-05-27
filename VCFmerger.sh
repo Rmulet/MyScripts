@@ -11,11 +11,11 @@
 # NOTE: Accessibility masks downloaded from: ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
 
 # Makes sure that that no repeated rows are added
-mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
+# mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
 
 display_usage() { 
 	echo -e "\nThis script merges regions of two compressed VCF files defined in a BED file using BCFtools. To work, it must be provided with one BED file containing positions in the 2nd and 3rd columns, and two VCF files." 
-	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs]" 
+	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs] [-db --database]" 
 	echo -e "\nOptions:\n -c, --cnvs \t Remove copy number variants (CNV) from the 1000GP file,\n\t\t which may extend beyond the limits of the interval [False]" 
 	echo -e " -w, --window \t Specifies the size of the window to be analyzed [1000]"
 	} 
@@ -71,19 +71,25 @@ fi
 # OPTIONAL ARGUMENTS:
 
 WINDOW=1000
+DB="Genomics"
 
 while [[ $# > 0 ]]
 do
 	case "$1" in
 		-w|--window)
 		WINDOW="$2" # $1 has the name, $2 the value
-		echo "Window size set to $WINDOW"
+		echo -e "Window size set to $WINDOW"
 		shift 2 # next two arguments (window + size)
 		;;
 		-c|--cnvs)
 		CNVS="CNVS" # $1 has the name, $2 the value
 		echo -e "CNVS will be removed"
 		shift # next argument
+		;;
+		-db|--database)
+		DB="$2" # $1 has the name, $2 the value
+		echo -e "Database name set to $DB"
+		shift 2
 		;;
 		*) # No more options
 	    ;;
@@ -119,7 +125,7 @@ do
 
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
-	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW >/dev/null # Avoid the message visualization!! 
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB >/dev/null # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	echo -e "Analysis with R complete. Data exported to the MySQL database."
 	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
