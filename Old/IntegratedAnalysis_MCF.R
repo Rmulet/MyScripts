@@ -51,6 +51,16 @@ wsize <- windows[1,3]-windows[1,2] # Windows size
 chr <- substr(windows[1,1],4,nchar(windows[1,1])) # Chromosome number
 ntotal <- nrow(windows) # Number of windows
 
+# BED is 0-based, but GRanges is 1-based.
+if (suppressMessages(!require("GenomicRanges"))) {
+  print ("The 'GenomicRanges' package is missing and will be installed")
+  source("https://bioconductor.org/biocLite.R")
+  biocLite("GenomicRanges")
+  library("GenomicRanges")
+}
+gffwindows <- data.frame(chr=windows[,1],start=windows[,2]+1,end=windows[,3])
+grwindows <- with(gffwindows,GRanges(chr,IRanges(start,end)))
+
 #######################################
 ## FUNCTION TO CONVERT WIG TO BIGWIG ##
 #######################################  
@@ -72,7 +82,6 @@ wigtobw <- function() { # By default, takes all windows
         system(sprintf("wigToBigWig %s hg19.chrom.sizes %s",filechr,out))
         file.remove(filechr)
         }
-
 return(out)
 }
 
@@ -80,7 +89,6 @@ return(out)
 ## FUNCTION TO EXTRACT DATA FROM BW ##
 ######################################  
 
-# EXTRACT INFORMATION IN WINDOWS:
 bwfraction <- function(ini=1,step=ntotal) {
   for (file in markfiles) {
     tissue.id <- str_match(file,pattern)[,2]
@@ -95,12 +103,21 @@ bwfraction <- function(ini=1,step=ntotal) {
       sample <- abbreviate(str_replace_all(tissue.id,"_",""))
     } else {
       cat(sprintf("File %s not appropriate for the current analysis \n",file));next}
+    ## EXTRACT DATA FROM BW ## 
     # Import as a table to R:
     system(sprintf("bwtool extract bed windows.bed %s %s -decimals=3",file,paste(file,".wn",sep="")))
     tab <- read.table(paste(file,".wn",sep=""),stringsAsFactors = FALSE)
     # WARNING: The table is imported to a variable called SAMPLE.
     suppressWarnings(assign(sample,lapply(strsplit(tab[,5],","),as.numeric),envir=.GlobalEnv))
-    samples <- c(samples,sample)
+    ## EXTRACT DATA FROM NARROWPEAK ##
+    if (mark != "Bisulfite-Seq" && !sample %in% samples){ # Only needs to be done once
+      peakfile <- paste0(substr(file,1,nchar(file)-16),"narrowPeak.gz")
+      temp <- system(sprintf("gunzip -c %s | grep '%s' | cut -f1,2,3 |  sort",peakfile,windows[1,1]),intern=TRUE) 
+      peaks <- read.table(textConnection(temp),sep="\t")
+      names(peaks) <- c("chr","start","end")
+      assign(paste0(sample,".peak"),with(peaks,GRanges(chr,IRanges(start,end))),envir=.GlobalEnv) # Transform to IRanges format
+    }
+    samples <- c(samples,sample)  
   }
   return(samples)
 }
@@ -109,8 +126,6 @@ bwfraction <- function(ini=1,step=ntotal) {
 ################################################
 ## FUNCTION TO MEASURE EPIGENETIC VARIABILITY ##
 ################################################
-
-
 
 Theta <- function(S,m,n) { # S=Segregating sites; m=total sites; n=number of samples
   summ <- 0
@@ -126,15 +141,32 @@ Pi <- function(k,m,n) { # Window number
   return(round(pi,7))
 }
 
-episcore <- function(nwin=ntotal) { # By default, it takes all the windows
+episcore <- function(nwin=ntotal,ini=1) { # By default, it takes all the windows
   # Preallocate vectors containing the results
   meanavg <- numeric(nwin); varavg <- numeric(nwin); meanvar <- numeric(nwin)
   pi <- numeric(nwin); theta <- numeric(nwin); nsites <- numeric(nwin)
   # Compares the n-line of each window across samples (tissues/donors/species)
   for (window in 1:nwin) {
     mat <- matrix(nrow=0,ncol=wsize) # Epigenetic diversity matrix
+    matpeaks <- matrix(nrow=0,ncol=wsize)  # For Chip-Seq only
     for (sample in samples) { # We add every sample to the matrix
+      # For Chip-Seq and Methylation, we retrieve intensity data
       mat <- rbind(mat,eval(as.symbol(sample))[[window]])
+      # For Chip-Seq, we identify with 1 positions of the window that have a peak
+      if (mark != "Bisulfite-Seq") {
+        newrow <- numeric(wsize)
+        grwin <- grwindows[ini+window] # For analysis in chunks
+        grpeaks <- eval(as.symbol(paste0(sample,".peak")))
+        overlap <- findOverlaps(query=grwin,subject=grpeaks)
+        spans <- ranges(overlap,ranges(grwin),ranges(grpeaks)) # Ranges of the overlap
+        if (length(spans) > 0) {
+          for (i in 1:length(spans)) { # For each peak overlapping that window
+            newrow[(start(spans[i])-start(grwin)):(end(spans[i])-start(grwin))] <- 1
+          }
+        }  
+        matpeaks <- rbind(matpeaks,newrow)
+        rownames(matpeaks)[nrow(matpeaks)] <- sample
+      }
     }
     matclean <- mat[,complete.cases(t(mat))] # We remove positions with NA (non-meth/missing)
     ## VARIANCE AND SIGNAL INTENSITY ## 
@@ -155,22 +187,29 @@ episcore <- function(nwin=ntotal) { # By default, it takes all the windows
         else if(x < 0.7 && x > 0.3){x <- 0.5} else {0} })
       m <- ncol(cpgsites) # Total CpG sites in the window (methylation loci)
       n <- length(samples)*2 # "Diploid"
-      MCF <- cpgsites[,apply(cpgsites,2,function(x){!all(x==x[1])}),drop=FALSE]
-      print(window)
-      if (dim(MCF)[2] == 0) { # No differentially methylated positions in the region
-        pi[window] <- 0
-        theta[window] <- 0
-        nsites[window] <- 0
-      }
-      S <- ncol(MCF)
-      ki <- apply(MCF,2,function(x) {a <- table(x);
-        (sum(a[names(a) == 0])*2+sum(a[names(a) == 0.5]))*
-        (sum(a[names(a) == 1])*2+sum(a[names(a) == 0.5]))})
+      # ECF = Epigenetic Call Format: Only variable positions
+      ECF <- cpgsites[,apply(cpgsites,2,function(x){!all(x==x[1])}),drop=FALSE]
+      ki <- apply(ECF,2,function(x) {a <- table(x);
+       (sum(a[names(a) == 0])*2+sum(a[names(a) == 0.5]))*
+       (sum(a[names(a) == 1])*2+sum(a[names(a) == 0.5]))})
+      ## OTHER EPIGENETIC MARKS POLYMORPHISM ESTIMATORS ##
+    } else {
+      m <- ncol(matpeaks) # Total nucleotides in that window (1000)
+      n <- nrow(matpeaks) # "Haploid" n
+      ECF <- matpeaks[,apply(matpeaks,2,function(x){!all(x==x[1])}),drop=FALSE] # Can be joined with MCF
+      ki <- apply(ECF,2,table)
+    }
+    if (is.null(ECF)||dim(ECF)[2] == 0) { # No differentially methylated positions in the region
+      ki <- 0
+      S <- 0
+    } else {  
       k <- sum(ki)
+      S <- ncol(ECF) # Segregating sites = positions with epigenetic differences
       pi[window] <- Pi(k,m,n)
       theta[window] <- Theta(S,m,n)
       nsites[window] <- S
     }
+    print(ini+window-1)
   }
   epidata <- data.frame(Pi=pi,Theta=theta,S=nsites,Level=meanavg,LevelVar=varavg,Var=meanvar)
   return(epidata)
@@ -185,7 +224,6 @@ library(stringr)
 filenames <- list.files(".", pattern=sprintf("%s.+(bigwig$|wig\\.gz$)",group), full.names=TRUE) # Files in the folder
 # Roadmap standard: a few donors have IDs with dots 
 pattern <- "\\.(\\w+)\\.(Bisulfite-Seq|H[A|2B|3|4]K\\d+(me\\d|ac))\\.(\\w+)\\."
-samples <- list()
 marks <- vector()
 
 # GROUP THE FILES BY EPIGENETIC MARK:
@@ -205,7 +243,8 @@ for (file in filenames) {
 }
 
 # CALCULATE VARIABILITY FOR EACH MARK:
-epidata <- windows
+start <- Sys.time()
+epidata <- windows[1:ntotal,]
 for (mark in marks){
   markfiles <- grep(mark,filenames,value=T)
   samples <- vector()
@@ -217,27 +256,29 @@ for (mark in marks){
       stop (sprintf("Please provide %s data from more than one donor",mark))
     }
     # FRACTIONED ANALYSIS:  
-  } else if (ntotal*wsize < 500000) { # If the region contains < 500 kb, all is processed at once
-    write.table(windows,file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
+  } else if (ntotal*wsize < 1000000) { # If the region contains < 500 kb, all is processed at once
+    write.table(windows[1:ntotal,],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
     samples <- bwfraction()
     markdata <- episcore()
   } else { # If the region contains > 500 kb, the analysis is fractioned
-    markdata <- data.frame(Level=numeric(0),LevelVar=numeric(0),Var=numeric(0))
-    chunk <- 500000/wsize
+    markdata <- data.frame(Pi=numeric(0),Theta=numeric(0),S=numeric(0),Level=numeric(0),LevelVar=numeric(0),Var=numeric(0))
+    chunk <- 1000000/wsize
     for (ini in seq(1,ntotal,by=chunk)) { # REVIEW INTERVAL!!!!
-      if ((n-ini+1) < chunk) {
+      if ((ntotal-ini+1) < chunk) {
         # Create 'windows.bed' file for 'bwtools':
         chunk <- ntotal%%chunk
       }
       write.table(windows[ini:(ini+chunk-1),],file="windows.bed",row.names=FALSE,col.names=FALSE,quote=FALSE,sep="\t")
-      bwfraction(ini=ini,step=chunk)
-      markdata <- rbind(markdata,episcore(nwin=chunk))
+      samples <- vector()
+      samples <- bwfraction(ini=ini,step=chunk)
+      markdata <- rbind(markdata,episcore(nwin=chunk,ini=ini))
     }
   }
-  labels <- c(sprintf("%s_Level",mark),sprintf("%s_LevelVar",mark),sprintf("%s_Var",mark))
+  labels <- c(sprintf("%s_Pi",mark),sprintf("%s_Theta",mark),sprintf("%s_S",mark),sprintf("%s_Level",mark),sprintf("%s_LevelVar",mark),sprintf("%s_Var",mark))
   colnames(markdata) <- labels
   epidata <- cbind(epidata,markdata) # If no fractions, that can be moved above
 }
+Sys.time() - start
 
 if (mode == "Intraindividual") {
   code <- group  # Samples of the study

@@ -10,9 +10,6 @@
 # Xiao et al., it was adjusted to 1000 for the sake of statistical power. The window size was assessed with 'WinEvaluation.R'.
 # NOTE: Accessibility masks downloaded from: ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
 
-# Makes sure that that no repeated rows are added
-# mysql --user="root" --password="RM333" --database="PEGH" --execute="DROP table IF EXISTS Genomics";
-
 display_usage() { 
 	echo -e "\nThis script merges regions of two compressed VCF files defined in a BED file using BCFtools. To work, it must be provided with one BED file containing positions in the 2nd and 3rd columns, and two VCF files." 
 	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs] [-db --database]" 
