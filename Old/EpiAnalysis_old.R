@@ -74,7 +74,7 @@ grwindows <- with(gffwindows,GRanges(chr,IRanges(start,end)))
 start <- Sys.time()
 wigtobw <- function() { # By default, takes all windows
     # IF NECESSARY, CREATE BIGWIG:
-    filechr <- paste(substr(file,1,nchar(file)-2),chr,sep="") # Extracts only chr22
+    filechr <- paste(substr(file,1,nchar(file)-2),chr,sep="")
     out <- paste(substr(file,1,nchar(file)-7),".bw",sep="")
       if (file.exists(out) == FALSE) {
         # Select only rows of the chromosome of interest [chr22]:
@@ -104,10 +104,6 @@ bwfraction <- function(ini=1,step=ntotal) {
       sample <- abbreviate(str_replace_all(tissue.id,"_",""))
     } else {
       cat(sprintf("File %s not appropriate for the current analysis \n",file));next}
-    if (sample %in% samples) { # Repeated samples (e.g. two datasets of the same tissue)
-      cat(sprintf("Warning: the file %s is excluded becahse there is another %s sample",file,sample))
-      next
-    }
     ## EXTRACT DATA FROM BW ## 
     # Import as a table to R:
     system(sprintf("bwtool extract bed windows.bed %s %s -decimals=3",file,paste(file,".wn",sep="")))
@@ -231,10 +227,14 @@ filenames <- list.files(".", pattern=sprintf("%s.+(bigwig$|wig\\.gz$)",group), f
 # Roadmap standard: a few donors have IDs with dots 
 pattern <- "\\.(\\w+)\\.(Bisulfite-Seq|H[A|2B|3|4]K\\d+(me\\d|ac))\\.(\\w+)\\."
 marks <- vector()
+tissues <- vector()
+donors <- vector()
 
-# GROUP THE FILES BY EPIGENETIC MARK:
+# GROUP THE FILES BY EPIGENETIC MARK AND CHECK FOR REPEATED FILES:
 for (file in filenames) {
   mark <- str_match(file,pattern)[,3]
+  tissue <- str_match(file,pattern)[,2]
+  donor <- str_match(file,pattern)[,5]
   if (is.na(mark)==TRUE) {
     cat(sprintf("File %s does not follow the required pattern. Please check with '-h' or '--help' \n",file))
     next;
@@ -242,11 +242,21 @@ for (file in filenames) {
   if (!mark %in% marks) {
     marks <- c(marks,mark)
   }
+  if (mode == "Intraindividual" && tissue %in% tissues) {
+    file.rename(file,paste(c(file,"_repeated"),collapse=""))
+    next
+  } else if (mode == "Interindividual" && donor %in% donors) {
+    file.rename(file,paste(c(file,"_repeated"),collapse=""))
+    next
+  }
   if (mark == "Bisulfite-Seq") {
     wigtobw()
   }
   filenames <- list.files(".", pattern=sprintf("%s.+(bigwig$|bw$)",group), full.names=TRUE) # BigWig files
+  tissues <- c(tissues,tissue)
+  donors <- c(donors,donor)
 }
+
 # CALCULATE VARIABILITY FOR EACH MARK:
 epidata <- windows[1:ntotal,]
 for (mark in marks){
@@ -335,13 +345,4 @@ cat(c(ntotal*wsize,"bases"))
 
 
 #  The -log10(p-value) scores provide a convenient way to threshold signal (e.g. 2 corresponds to a p-value threshold of 1e-2), similar to what is used in identifying enriched regions (peak calling). We recommend using the signal confidence score tracks for visualization. A universal threshold of 2 provides good separation between signal and noise. Both types of signal tracks were also generated for the unconsolidated datasets using the same parameter settings described above.
-
-# Correct name change:
-# filenames <- list.files(".", pattern="_repeated", full.names=TRUE) # Files in the folder
-# pat <- "(.+)_repeated"
-# for (i in filenames) {
-#   print(i)
-# original <- str_match(i,pat)[2]
-#   file.rename(i,original)
-# }
  

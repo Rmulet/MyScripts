@@ -3,7 +3,7 @@
 # VCFExtractor.py, Version 1.0
 
 # This script converts multi-FASTA alignments (.mfa) files structured as pairs of aligned sequences, each of which covers a region
-# of a chromosome, into VCF files. To account for possible overlaps between the regions of the reference 
+# of a chromosome, into VCF files. Overlaps between regions of the target species, are denoted as an unknown variant (.)
 
 # WARNING: It is advised to executed this tool on Python3.
 # WARNING: This version detects overlaps and changes repeats to Rs.
@@ -17,7 +17,7 @@ import os
 ## PARSING ARGUMENTS ##
 #######################
 
-parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
+parser = argparse.ArgumentParser(description='This script converts multi-FASTA alignments (.mfa) files structured as pairs of aligned sequences, each of which covers a region of a chromosome, into VCF files. Overlaps between regions of the target species are counted as a single unkown (.) variant.')
 parser.add_argument('input',type=str,help="Input file, in MFA format")
 parser.add_argument('-o','--output',type=str,default="outdef",help="Output file, in VCF format")
 parser.add_argument('-c','--chrom',type=str,default="22",help="Chromosome identifier")

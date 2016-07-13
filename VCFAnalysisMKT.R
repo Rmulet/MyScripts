@@ -1,6 +1,6 @@
 #!/usr/bin/Rscript
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; wsize <- 1000
+#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; chrom <- "22"; wsize <- 1000
 #filename <- "inspect.vcf.gz"; ini <- 22767120; end <- 22768120; wsize <- 1000
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
@@ -30,7 +30,7 @@ chrom <- args[2] # Chromosome number
 ini <- as.numeric(args[3])-1; end <- args[4] # Window range. -1 from ini to include position 1.
 wsize <- as.numeric(args[5]) # Window size
 db <- args[6] # Name of the database [Genomics]
-diver < - args[7] # Calculate MKT
+diver <- args[7] # Calculate MKT
 
 # We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # Optionally, we can provide a GFF file with annotations, but it's not necessary here.
@@ -38,10 +38,11 @@ diver < - args[7] # Calculate MKT
 # 10,000 are recommended on a 4 GB RAM computer.
 
 if (diver==TRUE) {
-  region <- readData(sprintf("chr%d.fasta",chrom),gffpath=sprintf("chr%d.gff",chrom))
+  region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE,gffpath=sprintf("chr%s.gff",chrom))
+  region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom)) 
+  cat("MKT will be calculated \n")
 } else {
   region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-  
 }
 
 ## DEFINE POPULATION/OUTGROUP ##
@@ -183,8 +184,8 @@ if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F
 ## MKT CALCULATION:
 
 if (diver==TRUE) {
-  region <- MKT(region)
-  regiondata <- cbind(regiondata,)
+  slide <- MKT(slide)
+  regiondata <- cbind(regiondata,alpha=slide@MKT[,6],Pns=slide@MKT[,1],Ps=slide@MKT[,2],Dns=slide@MKT[,3],Ds=slide@MKT[,4])
 }
 
 ######################

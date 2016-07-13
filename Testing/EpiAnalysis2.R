@@ -105,7 +105,7 @@ bwfraction <- function(ini=1,step=ntotal) {
     } else {
       cat(sprintf("File %s not appropriate for the current analysis \n",file));next}
     if (sample %in% samples) { # Repeated samples (e.g. two datasets of the same tissue)
-      cat(sprintf("Warning: the file %s is excluded becahse there is another %s sample",file,sample))
+      cat(sprintf("Warning: the file %s is excluded becahse there is another %s sample",file,sample)
       next
     }
     ## EXTRACT DATA FROM BW ## 
