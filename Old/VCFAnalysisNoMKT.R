@@ -1,6 +1,6 @@
 #!/usr/bin/Rscript
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; chrom <- "22"; wsize <- 1000
+#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; wsize <- 1000
 #filename <- "inspect.vcf.gz"; ini <- 22767120; end <- 22768120; wsize <- 1000
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
@@ -30,20 +30,12 @@ chrom <- args[2] # Chromosome number
 ini <- as.numeric(args[3])-1; end <- args[4] # Window range. -1 from ini to include position 1.
 wsize <- as.numeric(args[5]) # Window size
 db <- args[6] # Name of the database [Genomics]
-diver <- args[7] # Calculate MKT
 
 # We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # Optionally, we can provide a GFF file with annotations, but it's not necessary here.
 # Numcols indicates the number of SNPs read into the RAM at once. For a sample of 1000 individuals,
 # 10,000 are recommended on a 4 GB RAM computer.
-
-if (diver==TRUE) {
-  region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE,gffpath=sprintf("chr%s.gff",chrom))
-  region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom)) 
-  cat("MKT will be calculated \n")
-} else {
-  region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-}
+region <- readVCF(filename,numcols=5000,tid="22",from=ini,to=end,include.unknown=TRUE)
 
 ## DEFINE POPULATION/OUTGROUP ##
 
@@ -126,7 +118,7 @@ measures <- function(object) {
       polysites <- sum(!is.na(match(polyal,winstart:(winstart+wsize)))) # N polyallelic sites in that window
     }
     else {
-      polysites <- 0 # If not available, we assume 0
+      polysites <- 0 # If not available, we asumme 0
     }
     m <- wsize-sum(misshuman,na.rm=T)-polysites
     # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
@@ -163,7 +155,7 @@ measures <- function(object) {
     mout <- m - unknowns
     D <- round(divsites/mout,7) # Observed divergence: Proportion of sites with divergent nucleotides
     K <- round(-3/4*log(1-4/3*D),7) # Real divergence: Jukes and Cantor model
-      
+  
     ## ADD NEW ROW ##
     newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns)
     tabsum[nrow(tabsum)+1,] <- newrow
@@ -180,14 +172,7 @@ FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
 if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,regiondata[,3:7])
   } else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima_D=0,FuLi_F=0,regiondata[,3:7]) }
-
-## MKT CALCULATION:
-
-if (diver==TRUE) {
-  slide <- MKT(slide)
-  regiondata <- cbind(regiondata,alpha=slide@MKT[,6],Pns=slide@MKT[,1],Ps=slide@MKT[,2],Dns=slide@MKT[,3],Ds=slide@MKT[,4])
-}
-
+  
 ######################
 ## DATA EXPORTATION ##
 ######################

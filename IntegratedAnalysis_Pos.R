@@ -1,8 +1,8 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/3_EpigenomicsData/Roadmap/Intraindividual")
+# setwd("~/Documents/3_EpigenomicsData/IHECData/Intraindividual")
 # mode <- "Intraindividual"; group <- "STL003"
-# setwd("~/Documents/3_EpigenomicsData/Roadmap/Interindividual")
+# setwd("~/Documents/3_EpigenomicsData/IHECData/Interindividual")
 # mode <- "Interindividual"; group <- "Adipose_Derived_Mesenchymal_Stem_Cell_Cultured_Cells"
 
 # Combined Epigenetic Analysis Pipeline, v0.1 - This script combinesthe scripts'ChipSeqAnalysis.R' and 
@@ -43,7 +43,7 @@ suppressMessages(library(RMySQL))
 con <- dbConnect(RMySQL::MySQL(),
                  user="root", password="RM333",
                  dbname="PEGH", host="localhost")
-res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics")
+res <- dbSendQuery(con, "SELECT chr,start,end FROM Genomics_Pilot")
 windows <- dbFetch(res)
 invisible(dbClearResult(res)) # Frees resources associated with the query
 windows[,2:3] <- apply(windows[,2:3],2,as.numeric) # Make the variable numeric

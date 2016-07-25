@@ -1,9 +1,10 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/3_EpigenomicsData/Roadmap/Intraindividual/STL001")
+# setwd("~/Documents/3_EpigenomicsData/IHECData/Intraindividual/STL001")
 # mode <- "Intraindividual"; group <- "STL001"
-# setwd("~/Documents/3_EpigenomicsData/Roadmap/Interindividual")
+# setwd("~/Documents/3_EpigenomicsData/IHECData/Interindividual")
 # mode <- "Interindividual"; group <- "Adipose_Derived_Mesenchymal_Stem_Cell_Cultured_Cells"
+# setwd("/media/roger/Elements/STL003")
 
 # Combined Epigenetic Analysis Pipeline, v0.1 - This script combinesthe scripts'ChipSeqAnalysis.R' and 
 # 'MethAnalysis.R' into a single one to perform integrated analysis of epigenome data. To do so, it 
@@ -231,7 +232,15 @@ filenames <- list.files(".", pattern=sprintf("%s.+(bigwig$|wig\\.gz$)",group), f
 # Roadmap standard: a few donors have IDs with dots 
 pattern <- "\\.(\\w+)\\.(Bisulfite-Seq|H[A|2B|3|4]K\\d+(me\\d|ac))\\.(\\w+)\\."
 marks <- vector()
+tissues <- vector()
 
+for (file in filenames) {
+  tissue <- str_match(file,pattern)[,2]
+  if (!tissue %in% tissues) {
+    tissues <- c(tissues,tissue)
+  }
+}
+  
 # GROUP THE FILES BY EPIGENETIC MARK:
 for (file in filenames) {
   mark <- str_match(file,pattern)[,3]

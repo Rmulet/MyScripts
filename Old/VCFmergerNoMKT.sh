@@ -15,7 +15,6 @@ display_usage() {
 	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs] [-db --database]" 
 	echo -e "\nOptions:\n -c, --cnvs \t Remove copy number variants (CNV) from the 1000GP file,\n\t\t which may extend beyond the limits of the interval [False]" 
 	echo -e " -w, --window \t Specifies the size of the window to be analyzed [1000]"
-	echo -e " -db, --database \t Specifies the name of the database where the results will be stored [Genomics]"
 	} 
 
 #####################################
@@ -69,8 +68,7 @@ fi
 # OPTIONAL ARGUMENTS:
 
 WINDOW=1000
-DB="GenomicsMKT"
-diver="TRUE"
+DB="Genomics"
 
 while [[ $# > 0 ]]
 do
@@ -124,7 +122,7 @@ do
 
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
-	VCFAnalysisMKT.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $diver >/dev/null # Avoid the message visualization!! 
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB >/dev/null # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	echo -e "Analysis with R complete. Data exported to the MySQL database."
 	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
