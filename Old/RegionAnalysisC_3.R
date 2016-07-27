@@ -20,7 +20,7 @@ print(typeof(wsize))
 
 # (1) The chromosome identifier in the GFF has to be identical to the identifier used in the VCF file
 # Since VCFs from the 1000GP use numeric-only identifiers (e.g. '22'), a conversion is required:
-# In bash: cat Chr22.gff | sed 's/^chr22/22'. Also, tid must be identical to those two. 
+# In bash: cat Chr22.gff | sed 's/^chr22/22/g'. Also, tid must be identical to those two. 
 # (2) We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 region <- readVCF(filename,numcols=5000,tid="22",from=ini,to=end,gffpath="chr22.gff",include.unknown=TRUE)
 

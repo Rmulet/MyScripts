@@ -1,13 +1,14 @@
 #!/bin/bash
 
-# VERSION 0.6 - Merges the selected regions of the two VCF files with bcftools. Calculates statistics with R.
+# VCF MERGER 0.7 - Merges the selected regions of the two VCF files with bcftools. Calculates statistics with R.
 # WARNING: This script requires a terminating newline in the BED file. Information on how to circumvent this limitation is available here:
 # http://stackoverflow.com/questions/4165135/how-to-use-while-read-bash-to-read-the-last-line-in-a-file-if-there-s-no-new
 # WARNING: This script requires the usage of the latest experimental version of BCFTOOLS, available at http://pd3.github.io/bcftools/
-# WARNING: RegionAnalysis.R is assumed to be in an environment variable. If not, modify the address.
+# WARNING: VCFAnalysis.R is assumed to be in an environment variable. If not, modify the address.
 
 # UPDATE: Argument parsing has been improved. Window size = 1000 by default. Though 200 was originally proposed based on the paper by 
 # Xiao et al., it was adjusted to 1000 for the sake of statistical power. The window size was assessed with 'WinEvaluation.R'.
+# UPDATE2: Multiple flags added to enable greater flexibility. Script adapted to MKT.
 # NOTE: Accessibility masks downloaded from: ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
 
 display_usage() { 
@@ -70,7 +71,7 @@ fi
 # OPTIONAL ARGUMENTS:
 
 WINDOW=1000
-DB="GenomicsMKT2"
+DB="GenomicsMKT"
 MKT="FALSE"
 
 while [[ $# > 0 ]]
