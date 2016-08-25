@@ -214,10 +214,10 @@ first <- !dbExistsTable(con,db)
 
 dbWriteTable(con,value=export,name=db,row.names=F,append=T)
 
-if (first == TRUE) {
-  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
-  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
-  }
+#if (first == TRUE) # Remove if we want to concatenate various chromosomes
+#  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
+#  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
+# }
 
 on.exit(dbDisconnect(con))
 

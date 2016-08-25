@@ -122,7 +122,7 @@ with open(args.input,'r') as file:
 			counter+=1
 		# STORES THE POSITION OF THE CURRENT FRAGMENT:
 		if trigger == 1 and line[0]==">": # HUMAN HEADER (including first)
-			match = re.search(r'(chr\d+:)(\d+)-(\d+)',line)	# I've replaced \d\d with \d+
+			match = re.search(r'(chr\w+:)(\d+)-(\d+)',line)	# I've replaced \d\d with \d+
 			if match: 
 				start = int(match.group(2))
 				end = int(match.group(3))

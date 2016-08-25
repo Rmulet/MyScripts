@@ -10,7 +10,8 @@ display_usage() {
 	echo -e "\nOptions:\n -w, --window \t Specifies the size of the window to be analyzed [10000]" 
 	echo -e " -msk, --mask \t Indicates what 1000 Genomes Project mask should be used (Pilot/Strict) [Pilot]"
 	echo -e " -dl, --download \t Determines whether the necessary files should be downloaded from predefined URLs [FALSE]"
-	echo -e " -pop, --population \t Conducts the analysis by population (26/5/FALSE) [FALSE]"
+	echo -e " -pop, --population \t Conducts the analysis by population (26/5/name/FALSE) [FALSE]"
+	echo -e " -chr, --chromosome \t Analyses a single chromosome (in format NN, e.g. 22) [ALL]"
 	} 
 
 #####################################
@@ -31,6 +32,7 @@ fi
 WINDOW=10000
 MASK="pilot"
 POP="FALSE"
+DL="FALSE"
 
 while [[ $# > 0 ]]
 do
@@ -52,7 +54,9 @@ do
 		;;
 		-pop|--population)
 		POP="$2" # $1 has the name, $2 the value
-		echo -e "ALL necessary files will be downloaded: $DL"
+		if [ "$POP" == "26" ]; then echo "All populations will be analysed"
+		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
+		else echo -e "Population $POP will be analysed"; fi
 		shift 2
 		;;		
 		*) # No more options
@@ -72,6 +76,12 @@ finaldir="/home/roger/Documents/2_GenomicsData/Final" # Contains GFF files
 
 mskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
 
+downloader() {
+
+wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+
+}
+
 genome_analysis() {
 	#for i in `seq 1 22` X Y; do
 		i=21
@@ -89,10 +99,15 @@ genome_analysis() {
 			tabix -p vcf $gpfile
 		fi
 
-		if [ "$POP" != "FALSE" ]; then
+		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to contain 
 			popname=$1
-			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ' ')  # List of individuals in that population
-			bcftools view -Oz -s $popins chr$i.vcf.gz > chr$i$1.vcf.gz	
+			echo "1"
+			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
+			echo "Extracting the individuals of the selected population: $popname"
+			bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$1.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+			gpfile=chr$i$1.vcf.gz # In population mode, then gpfile is the 
+			echo $gpfile	
+			tabix -p vcf $gpfile
 		fi
 
 		 # DIVERGENCE #
@@ -116,14 +131,19 @@ genome_analysis() {
 		echo -e "Extracting the annotation file of chr$i"
 		zcat gencode.v19.annotation.gff3.gz | grep -P "^chr$i\t" | sed "s/^chr$i/$i/" > chr$i.gff  # Match the ID format of GFF to the VCF files
 		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
-		ln -s $gpdat/$gpfile.tbi $gpfile;  ln -s $alndat/$alnfile.tbi $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
+		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		VCFmerger.sh $MASK\_mask.chr$i.bed $gpfile $alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
-		# The $popname variable will be ommitted if it is not declared (i.e. analysis not conducted at this)
+		#VCFmerger.sh $MASK\_mask.chr$i.bed $gpfile $alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
+		# The $popname variable will be ommitted if it is not declared (i.e. analysis conducted for 2,504 individuals)
+		# By default, the results will be stored in separate tables. To merge them, remove $i from Genomics$i$popname.
 		echo -e "Analysis of chr$i complete.\n"
 #done
 	}
+
+#############################
+## ANALYSIS BY POPULATIONS ##
+#############################
 
 if [ "$POP" == "FALSE" ]; then 	
 	genome_analysis
