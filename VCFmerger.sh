@@ -16,7 +16,7 @@ display_usage() {
 	echo -e "\nUsage:\n $(basename "$0") [BED file] [1000GP VCF.GZ file] [Alignment VCF.GZ file] [-w --window] [-c --cnvs] [-db --database]" 
 	echo -e "\nOptions:\n -c, --cnvs \t Remove copy number variants (CNV) from the 1000GP file,\n\t\t which may extend beyond the limits of the interval [False]" 
 	echo -e " -w, --window \t Specifies the size of the window to be analyzed [1000]"
-	echo -e " -db, --database \t Specifies the name of the database where the results will be stored [Genomics]"
+	echo -e " -db, --database \t Specifies the name of the data table where the results will be stored [Genomics]"
 	echo -e " -mkt, --mktest \t Determines whether the MKT will be conducted [TRUE for windows >= 10,000]"
 	} 
 

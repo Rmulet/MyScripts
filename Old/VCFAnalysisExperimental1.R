@@ -1,8 +1,7 @@
 #!/usr/bin/Rscript
 
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; chrom <- "22"; wsize <- 1000
-#filename <- "inspect.vcf.gz"; ini <- 22767120; end <- 22768120; wsize <- 1000
+#filename <- "merge.trial.vcf.gz"; ini <- 38472185-1; end <- 38477334; chrom <- "22"; wsize <- 1000; MK <- "TRUE"
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
@@ -71,6 +70,7 @@ slide <- sliding.window.transform(region,width=wsize,jump=wsize,type=2) # Create
 windows <- unlist(strsplit(slide@region.names,":")) # Retrieves window labels without ":"
 windows <- t(sapply(strsplit(windows,"-"),as.numeric))
 colnames(windows) <- c("start","end")
+windex <- slide@SLIDE.POS # Index of each variant grouped by windows
 
 ################
 ## STATISTICS ##
@@ -82,16 +82,36 @@ colnames(windows) <- c("start","end")
 # number of segregating sites (S). However, S excludes missing information in the outgroup.
 slide <- neutrality.stats(slide)
 
-## SITE FREQUENCY SPECTRA ##
+## SITE FREQUENCY SPECTRA (IMPROVED) ##
 
-# SFS is the default calculation in the module detail.stats. The results are stored in
-# the slot slide@region.stats@minor.allele.freqs
-# slide <- detail.stats(slide)
-# Since it does not work with an outgroup, we can try the following:
-region <- detail.stats(region)
-totalMAF <- region@region.stats@minor.allele.freqs
-windex <- slide@SLIDE.POS # Index of each variant grouped by windows
-MAFsites <- as.numeric(colnames(totalMAF[[1]])) # Only when outgroup is defined. If not, totalMAF does not have names.
+n <- length(humans) # N = samples. Diploid, not divided by 2
+bial <- get.biallelic.matrix(region,1) # Biallelic matrix
+bialhuman <- bial[1:n,,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
+freqs <- colSums(bialhuman == 1)/nrow(bialhuman)
+freqs.df <- data.frame(NUM=seq(1,length(freqs)),POS=names(freqs),MAF=freqs)
+
+# IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
+library(stringr)
+temp <- system(sprintf('gunzip -c %s | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file  
+gpimport <- read.table(textConnection(temp),sep="\t",stringsAsFactors = FALSE,header=TRUE)
+gpances <- toupper(sapply(gpimport[,3],function(x){str_match(x,"AA=([:alpha:])\\|")[2]},USE.NAMES=FALSE)) # Capture the ancestral allele
+aarefs <- na.omit(cbind(gpimport[,1:2],ANC=gpances)) # Na.omit removes positions without known AA and divergent sites
+
+# CALCULATE DERIVED ALLELE FREQUENCY (DAF)
+mafan <- merge(freqs.df,aarefs) # Intersection between SNPs in the biallelic matrix and the region
+mafan$DAF <- NA # DAF is equal to MAF if derived = minor, but 1 - MAF if otherwise
+mafan[mafan$REF != mafan$ANC,]$DAF <- 1- mafan[mafan$REF != mafan$ANC,]$MAF 
+mafan[mafan$REF == mafan$ANC,]$DAF <- mafan[mafan$REF == mafan$ANC,]$MAF 
+# Frequencies do not exactly match those of the VCF file!
+
+# Checking:
+
+# ncol(bial) # 239 total SNPs
+# length(totalMAF[[1]][1,]) # 223 with MAF
+# length(bial[n+1,][is.na(bial[n+1,])]) # 16 without known chimp allele
+# sum(totalMAF[[1]][1,] == 1) # 44 monomorphic alleles
+# sum (freqs == 0) # 44 monomorphic alleles
+
 
 ## CUSTOM FUNCTION FOR NUCLEOTIDE DIVERSITY AND DIVERGENCE ##
 measures <- function(object) {
@@ -145,17 +165,19 @@ measures <- function(object) {
       k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
     }
     # CALCULATE SITE FREQUENCY SPECTRUM (SFS) / DERIVED ALLELE FREQUENCY (DAF):
-    # When there is an outgroup, missing positions are eliminated in MAF, but not in the biallelic matrix:
-    # the indices of the windows do not match those in the totalMAF variable. Instead, we have to 
-    # use the names of the variable (MAFsites). We filter to exclude monomorphic sites.
-    if (length(region@outgroup) != 0) { # Outgroup: indices of 'totalMAF' =/= those of windows.
-      winsites <- which(MAFsites %in% windex[[window]][polym]) # Window sites w/o unknowns and polymorphic in humans
-      } else { # No outgroup: indices of 'totalMAF' match those of windows in 'windex'
-      winsites <- windex[[window]][polym] # Sites in that window w/o unknowns and polymorphic in humans
-    }
-    winMAF <- totalMAF[[1]][1,winsites] # Frequencies in window (removing unknowns)
-    DAF <- hist(winMAF,seq(0.0,1,0.1),plot=F)$counts
+    # The 'windex' variable contains the indices of the biallelic variants contained in each window. 
+    # By using this information, we can subset the DAF of the sites in this window contained in 'mafan'.
+    winsites <- which(mafan$NUM %in% windex[[window]]) # Window sites w/o unknowns and polymorphic in humans
+    winDAF <- mafan[winsites,6] # Frequencies in window (removing unknowns)
+    DAF <- hist(winDAF,seq(0.0,1,0.05),plot=F)$counts
     DAF <- paste(DAF,collapse = ";")
+    
+    # SFS by SYNONYMOUS AND NON-SYNONYMOUS #
+    
+    synmask <- slide@region.data@synonymous[[window]][windex[[window]] %in% mafan$NUM]
+    nsDAF <- winDAF[synmask==0 & !is.nan(synmask)]
+    synDAF <- winDAF[synmask==1 & !is.nan(synmask)]
+    
     # COUNT THE NUMBER OF UNKNOWNS IN THE OUTGROUP:
     unknowns <- sum(is.nan(bial[total,])) # Displayed as NaN in the biallelic matrix
     

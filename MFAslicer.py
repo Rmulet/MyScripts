@@ -7,7 +7,7 @@ import argparse
 ## PARSING ARGUMENTS ##
 #######################
 
-parser = argparse.ArgumentParser(description='Obtain a VCF file from a MFA using the SNP-sites tool. Currently it is only prepared to handle single .mfa files containing information from one chromosome.')
+parser = argparse.ArgumentParser(description='Cut slices of a MFA file comprised between a given set of coordinates')
 parser.add_argument('-i','--input',type=str,required=True,help="Input file, in MFA format")
 parser.add_argument('-p','--position',type=int,nargs='+',help="Starting position(s) of the region(s) to be extracted (no separators)") 
 parser.add_argument('-s','--species',type=str,default="Human",help="Common name of the target species (check the file)")
