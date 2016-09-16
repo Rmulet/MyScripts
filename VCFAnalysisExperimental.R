@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 #setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"; window = 7
+#filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603-1; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"; window = 7
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
@@ -15,6 +15,7 @@
 # UPDATE5: MKT re-added, optional. It requires a GFF and a FASTA file.
 # UPDATE6: 1) Improved DAF with 1000 AA 2) Improved MKT with 4fold and extended MKT.
 # UPDATE7: GFFtoFASTA has replaced 'set.synnonsyn_alt' as the method of choic for MKT.
+# UPDATE8: Change in the coordinate system according to the mask in pseudo-BED format.
 
 #library(parallel) # Parallelization does not seem to work
 #no.cores <- detectCores() -1
@@ -33,7 +34,9 @@ if (suppressMessages(!require("PopGenome"))) { # Can be removed
 args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
 filename <- args[1] # Name of the file specified after the script
 chrom <- args[2] # Chromosome number
-ini <- as.numeric(args[3])-1; end <- args[4] # Window range. -1 from ini to include position 1.
+ini <- as.numeric(args[3])-1; end <- args[4]-1 # Although the mask file is supposed to be in BED format,
+# comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not 
+# included. START matches the position in the FASTA, but PopGenome tends to add 1; therefore, we remove it
 wsize <- as.numeric(args[5]) # Window size
 db <- args[6] # Name of the database [Genomics]
 MK <- args[7] # Calculate MKT
@@ -96,7 +99,7 @@ n <- length(humans) # N = samples. Diploid, not divided by 2
 # bial <- get.biallelic.matrix(region,1) # Testing
 bialhuman <- get.biallelic.matrix(region,1) [1:n,,drop=F] #  Biallelic matrix, remove outgroup
 freqs <- colSums(bialhuman == 1)/nrow(bialhuman)
-freqs.df <- data.frame(POS=names(freqs),MAF=unname(freqs)) # Position and DAF of biallelic variants
+freqs.df <- data.frame(POS=names(freqs),MAF=unname(freqs)) # Position and MAF of biallelic variants
 
 # IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
 library(stringr)
@@ -138,7 +141,7 @@ measures <- function(object) {
 
   # LOOP TO READ THE WINDOWS IN SLIDE VARIABLE:
   for (window in 1:nrow(windows)) {
-    # DETERMINE SEGREGATING SITES (EXCLUDING OUTGROUP)
+    # EXTRACT SEGREGATING SITES (EXCLUDING OUTGROUP)
     bial <- get.biallelic.matrix(slide,window) # Biallelic matrix of the window
     if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
       newrow <- rep(0,13) # Empty rows
@@ -190,9 +193,9 @@ measures <- function(object) {
     ## NATURAL SELECTION REGIMES ##
     
     winsites <- allwinsites[[window]] # Biallelic sites in this window
-    bial.gff <- gffseq[allwinsites[[window]]] # GFF feature in each site
+    bial.class <- gffseq[winsites] # GFF feature in each site
     syn <- slide@region.data@synonymous[[window]] # Contains syn and non-syn positions
-    syn[bial.gff == 4] <- 4
+    syn[bial.class == 4] <- 4
 
     ## MKT CALCULATION
     
@@ -235,9 +238,19 @@ measures <- function(object) {
       if(sum(contingency)>0){fisher.test(contingency)$p.value}
     } else {NA}
       
+    # OTHER ESTIMATORS:
+    
     # To fully implement extended MKT, we need ms/mns, that is, the number of sites
     # of each class. Doing that would require modifying the 'set.synnonsyn2' function
     # to obtain all codons and check fold in every position (0,1,2)
+    
+    m.neu <- sum(bial.class == neu,na.rm=T)
+    m.sel <- sum(bial.class == sel,na.rm=T)
+    
+    f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
+    b <- (Psel.weak/Pneu)*(m.neu/m.sel)
+    y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
+    d <- 1 - (f+b)
 
     ## ADD NEW ROW ##
     newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,alpha.cor,test,Pns.neutral,Ps,Dns,Ds)
@@ -249,9 +262,10 @@ measures <- function(object) {
 
 ## INTEGRATION OF NEUTRALITY, DIVERSITY AND DIVERGENCE METRICS ## 
  
+# Results from neutrality stats module are divided by number of sites
 regiondata <- measures(slide)
 S2 <- slide@n.segregating.sites[,1] # Segretaging sites excluding unknowns
-Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) # 
+Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) 
 FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
 if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,regiondata[,3:ncol(regiondata)])
