@@ -1,13 +1,15 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/2_GenomicsData/TestGeneByGene")
-#  gffpath <- "chr22.gff"; ref.chr <- "chr22.fa"; chrom <- "22"
+# setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
+# gffpath <- "chr21.gff"; ref.chr <- "chr21.fa"; chrom <- "21"
 
 # This script creates a FASTA-like file with numeric codes identifying each feature. Thus, 9 is a gene,
 # 8 is a CDS, 5 is 5'-UTR and so on. For most features, it takes them directly from the GFF; for the coding
 # regions, it applies check_fold to determine their degeneracy (4 for 4-fold, 0 for 0-fold)
 
 # NOTE: The GFF file is 1-based, like R, i.e. one base is denoted as 1:1.
+# WARNING: The v8 version is intended for use of UCSC GFF files without gene notation.
+
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(stringr))
@@ -72,29 +74,29 @@ assocmat[assocmat == 1] <- 0
 ## ASSIGNATION OF SEQUENCE CLASSES ##
 #####################################
 
-## LOAD GFF FILE
-
-init <- Sys.time()
-gff.table   <- read.table(gffpath,sep="\t",colClasses=c(rep("character",3),
-                rep("integer",2),rep("character",2),"character","character")) # Replace with chr!!!
-gff.table[,9] <- str_match(gff.table[,9],"ID=(?:[\\w_]*:)?([a-z-0-9.]+)")[,2] # Keep the names
-gff.table <- gff.table[,c(1,3,4,5,7,8,9)]
-colnames(gff.table) <- c("chr","feature","start","end","strand","frame","ID")
-cdsgff <- gff.table[gff.table$feature == "CDS",]
-
 ## RETRIEVING SEQUENCE CLASSES TO VECTOR
+
+suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
+library(GenomicRanges)
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+seqlevels(txdb) <- sprintf("chr%s",chrom)
+genes <- transcripts(txdb) # The function genes() returns HUGO genes, not UCSC transcripts
+CDS <- cds(txdb)
+exons <- exons(txdb)
+fiveUTR <- unlist(fiveUTRsByTranscript(txdb))
+threeUTR <- unlist(threeUTRsByTranscript(txdb))
 
 file.info <- .Call("get_dim_fasta",ref.chr) # .Call invokes the C function get_ind_fasta (src folder): start and end positions of chr.
 gffseq <- as.integer(rep(NA,file.info[[1]][2])) # Stores the Integer is smaller than numeric
 # We assign features/classes from less to more conserved: 0 > 5 > 3 > Intron (9) > 4 > Intergenic (NA).
 # Non-assigned genes (9) will be introns. Exons can be coding (CDS) or non-coding (8).
 # CDS (7) will be replaced with 0/4 later.
-features <- c("gene"=9L,"exon"=8L,"CDS"=7L,"three_prime_UTR"=3L,"five_prime_UTR"=5L)
+features <- c("genes"=9L,"exons"=8L,"CDS"=7L,"threeUTR"=3L,"fiveUTR"=5L)
 for (n in 1:length(features)) {
-  feature <- gff.table[gff.table$feature == names(features[n]),]
+  feature <- eval(as.symbol(names(features[n])))
   symbol <- features[n]
-  for (i in 1:nrow(feature)) {
-    gffseq[feature[i,3]:feature[i,4]] <- symbol # 19353446
+  for (i in 1:length(feature)) {
+    gffseq[start(feature[i]):end(feature[i])] <- symbol
   }
 }
 sum(gffseq == 9,na.rm=T) # Sanity check. 18950868 gene.
@@ -105,6 +107,15 @@ sum(gffseq == 9,na.rm=T) # Sanity check. 18950868 gene.
 ####################################
 ## DEGENERACY IN CODING SEQUENCES ##
 ####################################
+
+## LOAD GFF FILE
+
+gff.table   <- read.table(gffpath,sep="\t",colClasses=c(rep("character",3),
+                                                        rep("integer",2),rep("character",2),"character","character")) # Replace with chr!!!
+cdsgff <- gff.table[gff.table[,3] == "CDS",]
+cdsgff[,9] <- str_match(cdsgff[,9],"gene_id ([:alnum:]+)")[,2] # Keep the names
+cdsgff <- cdsgff[,c(1,3,4,5,7,8,9)]
+colnames(gff.table) <- c("chr","feature","start","end","strand","frame","ID")
 
 ## OBTAIN CODING SEQUENCE AND CHECK FOLD 
 

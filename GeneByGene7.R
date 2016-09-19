@@ -1,15 +1,33 @@
-# setwd("~/Documents/2_GenomicsData/TestGeneByGene")
-# gpfile <- "chr22_filtered.vcf.gz" ; alnfile <- "chr22_aln.vcf.gz"
+#!/usr/bin/Rscript
+
+# setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
+# gpfile <- "chr21_gp.vcf.gz" ; alnfile <- "chr21_aln.vcf.gz"; chrom <- "21"; maskfile <- "20140520.chr21.pilot_mask.fasta.gz"
 ## filename <- "merge.vcf.gz"; ini <- 38944867; end <- 38966701; chrom <- "22"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
 # are missing via vector.
-# UPDATE 2: PopGenome steps havfe been separated as a distinct function.
+# UPDATE 2: PopGenome steps have been separated as a distinct function.
 # UPDATE 3: It is no longer necessary to import FASTA or GFF, as we are using our o
 
 suppressMessages(library(PopGenome))
-library(GenomicRanges)
-library(stringr)
+suppressMessages(library(GenomicRanges))
+suppressMessages(library(stringr))
+
+#############################
+## IMPORT AND PREPARE DATA ##
+#############################
+
+args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
+gpfile <- args[1] # 1000GP data
+alnfile <- args[2] # Chimp-Human alignment
+maskfile <- args[3] 
+chrom <- args[4]
+
+if (args[1] == "-h" | args[1] == "--help") {
+  cat("\nGFFtoFASTA - A script that creates a FASTA-like file with numeric codes identifying each feature.\n")
+  cat("\nUsage: GFFtoFASTA.R [GP FILE] [ALN FILE] [MASKFILE]\n\n")
+  quit()
+}
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -114,12 +132,12 @@ popanalysis <- function(filename,ini,end,ac.pos) {
   n <- length(humans) # N = samples. Diploid, not divided by 2
   total <- length(individuals) # Total number of samples (including outgroup)
   bial <- get.biallelic.matrix(region,1) # Biallelic matrix of the window
+  ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
+  bial <- bial[,ac.bial,drop=F]
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- rep(0,13) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
     return(newrow)
   }
-  ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
-  bial <- bial[,ac.bial]
   wsize <- end-ini+1 # GFF coordinates, 1-based
   
   # Bial contains only positions that are found in the accessibility mask
@@ -219,7 +237,7 @@ popanalysis <- function(filename,ini,end,ac.pos) {
 suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
 library(GenomicRanges)
 
-load("gffseq_chr22.RData")
+load(sprintf("gffseq_chr%s.RData",chrom))
 txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
 seqlevels(txdb) <- sprintf("chr%s",chrom)
 grgenes <- genes(txdb)
@@ -243,34 +261,76 @@ merge.vcf <- function(ini,end) {
 # the genes and the GRanges objects are 1-based. To convert from 0 to 1-based, START+1:END.
 
 # TABLE CONTAINING THE DATA:
-tabsum <- as.data.frame(matrix(numeric(length(grgenes)*91),ncol=91,nrow=length(grgenes)))
+tabsum <- as.data.frame(matrix(numeric(ngenes*91),ncol=91,nrow=ngenes))
 gendata <- data.frame(chr=rep(chrom,ngenes),start=start(grgenes),end=end(grgenes),missing=numeric(ngenes))
 # colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Pns","Ps","Dns","Ds")
 # Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d
+colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
 ## USING THE FASTA SEQUENCE:
 init <- Sys.time()
 library("Biostrings")
-maskfasta <- readBStringSet("chr22.pilot_mask.fasta.gz") # Reading files in gz format IS supported
+maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
 init <- Sys.time()
-for(i in 1:10) {
+for(i in 1:ngenes) {
   ini <- start(grgenes[i]); end <- end(grgenes[i])
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
-  if (sum(pass) == 0) {missing[i] <- 100}
+  if (sum(pass) == 0) {gendata$missing[i] <- 100}
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
   filename <- merge.vcf(ini,end)         
   tabsum[i,] <- popanalysis(filename,ini,end,ac.pos)
+  gc()
 }
 Sys.time()-init
+
 
 ###################
 ## FINAL TOUCHES ##
 ###################
 
-library(biomaRt)
-mart <- useMart(host="www.ensembl.org",biomart="ENSEMBL_MART_ENSEMBL")
-atts <- c("entrezgene","hgnc_symbol") # Retrieve the HUGO-approved gene symbol
-gene.names <- genes$gene_id
-annotation.h <- getBM(attributes=atts,uniqueRows=FALSE,filters="entrezgene",values=gene.names,mart=mart)
+tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
+db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
+mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
+site.class <- c("fold0","intron","UTR5","UTR3","UTR","inter")
+
+for (class in site.class) {
+  db.names <- c(db.names,unname(sapply(mkt.names,function(x){paste(c(x,"_",class),collapse="")})))
+}
+colnames(tabsum) <- db.names
+
+#library(biomaRt)
+#mart <- useMart(host="www.ensembl.org",biomart="ENSEMBL_MART_ENSEMBL")
+#atts <- c("entrezgene","hgnc_symbol") # Retrieve the HUGO-approved gene symbol
+#gene.names <- genes$gene_id
+#annotation.h <- getBM(attributes=atts,uniqueRows=FALSE,filters="entrezgene",values=gene.names,mart=mart)
+
+######################
+## DATA EXPORTATION ##
+######################
+
+# We add the chromosome info and the coordinates. For convenience in the next steps:
+# a) Coordinates are converted to BED format: 0-based, subtract 1 from start column.
+# b) Chromosome is expressed in "chrNN" format.
+
+export <- cbind(gendata,tabsum)
+export.name <- "GenesDB"
+
+suppressMessages(library(DBI))
+suppressMessages(library(RMySQL))
+
+con <- dbConnect(RMySQL::MySQL(),
+                 user="root", password="RM333",
+                 dbname="PEGH", host="localhost")
+
+first <- !dbExistsTable(con,export.name)
+
+dbWriteTable(con,value=export,name=export.name,row.names=F,append=T)
+
+#if (first == TRUE) # Remove if we want to concatenate various chromosomes
+#  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
+#  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
+# }
+
+on.exit(dbDisconnect(con))

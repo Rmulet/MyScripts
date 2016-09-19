@@ -2,6 +2,10 @@
 
 # GENE ANALYZER 0.1 - Evaluates natural selection regimes and population genetics statistics in a gene-restricted manner.
 
+# IMPORTANT: This pipeline assumes the usage of a GFF file with UCSC annotation. Since UCSC data are not provided in this format
+# by default, the Perl script UCSC_table2GFF3 is used. Alternatively, it could be downloaded and transformed with gtf2gff3.pl
+# The
+
 # Add DOWNLOAD and MASK option
 
 display_usage() { 
@@ -68,10 +72,25 @@ alnraw="/home/roger/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp ali
 alndat="/home/roger/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
 finaldir="/home/roger/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
 
-mskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
+maskdir=$gpdat/Masks/FASTA
 
+downloader() {
+echo "The files required for the analysis will be downloaded"	
+cd $gpraw
+wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+cd $gpdat/Others
+wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
+cd $alnraw
+for i in `seq 1 22` X Y; do
+	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
+	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.fa.gz,chr$i.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
+done
+cd $gpdata/Masks
+wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
+}
 
-genome_analysis() {
+START=$(date +%s)
+#genome_analysis() {
 	#for i in `seq 1 22` X Y; do
 		i=21
 		# POLYMORPHISM #
@@ -113,22 +132,35 @@ genome_analysis() {
 			MFAtoVCF.py -s chr$i.fa -q Chimp -c $i $alnstart # Convert MFA to VCF. VCF.GZ file is automatically tabixed.
 		fi
 
-		# PREANALYSIS (GFF to FASTA)	
+		# PREANALYSIS (GFF to FASTA) #	
 		cd $finaldir
-		GFFtoFASTA.R chr$i.gff chr$i.fa # Convert 
+		echo -e "Generating the pseudo-FASTA file"
+		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
+		if [ ! -e "gffseq_chr$i.RData" ]; then
+		GFFtoFASTA8.R chr$i.gff chr$i.fa $i # Puts the GFF annotation in a sequence
+		fi			
 
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
-		grep "chr$i" $mskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.
-		echo -e "Extracting the annotation file of chr$i"
-		zcat gencode.v19.annotation.gff3.gz | grep -P "^chr$i\t" | sed "s/^chr$i/$i/" > chr$i.gff  # Match the ID format of GFF to the VCF files
-		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
+		maskfile=$(cd $maskdir && ls -d *chr$i.*)	
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
+		ln -s $maskdir/$maskfile # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		#VCFmerger.sh $MASK\_mask.chr$i.bed $gpfile $alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
-		# The $popname variable will be ommitted if it is not declared (i.e. analysis conducted for 2,504 individuals)
-		# By default, the results will be stored in separate tables. To merge them, remove $i from Genomics$i$popname.
+		echo $gpfile
+		GeneByGene7.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
-#done
-	}
+		rm chr$i*
+# done
+	#}
+
+#############################
+## ANALYSIS BY POPULATIONS ##
+#############################
+
+
+
+
+END=$(date +%s)
+DIFF=$(( $END - $START ))
+echo "Runtime: $DIFF seconds"
