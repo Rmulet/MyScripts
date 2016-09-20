@@ -76,20 +76,18 @@ finaldir="/home/roger/Documents/2_GenomicsData/Final" # Contains GFF files
 
 mskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
 
-downloader() {
-echo "The files required for the analysis will be downloaded"	
-cd $gpraw
-wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
-cd $gpdat/Others
-wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
-cd $alnraw
-for i in `seq 1 22` X Y; do
+if [ "$DL" == "TRUE" ]; then # DOWNLOAD?
+	echo "The files required for the analysis will be downloaded"	
+	cd $gpraw
+	wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+	cd $gpdat/Others
+	wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
+	cd $alnraw
 	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
 	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.fa.gz,chr$i.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
-done
-cd $gpdata/Masks
-wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
-}
+	cd $gpdata/Masks
+	wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
+fi	
 
 genome_analysis() {
 	#for i in `seq 1 22` X Y; do
@@ -108,7 +106,7 @@ genome_analysis() {
 			tabix -p vcf $gpfile
 		fi
 
-		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to contain 
+		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to integrated_call_samples_v3ontain 
 			popname=$1
 			echo "1"
 			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
@@ -153,10 +151,6 @@ genome_analysis() {
 #############################
 ## ANALYSIS BY POPULATIONS ##
 #############################
-
-if [ "$DL" == "TRUE" ]; then
-	downloader
-fi	
 
 if [ "$POP" == "FALSE" ]; then 	
 	genome_analysis

@@ -74,25 +74,28 @@ finaldir="/home/roger/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF 
 
 maskdir=$gpdat/Masks/FASTA
 
-downloader() {
-echo "The files required for the analysis will be downloaded"	
-cd $gpraw
-wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
-cd $gpdat/Others
-wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
-cd $alnraw
-for i in `seq 1 22` X Y; do
-	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
-	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.fa.gz,chr$i.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
-done
-cd $gpdata/Masks
-wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
-}
+## DOWNLOAD FILES [OPTIONAL]
+if [ "$DL" == "TRUE" ]; then
+	echo "The files required for the analysis will be downloaded"	
+	cd $gpraw
+	wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+	cd $gpdat/Others
+	wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
+	cd $alnraw
+	wget -e robots=off -nc -nd -r -l1 -np -A chr??.mfa.gz,chr?.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
+	wget -e robots=off -nc -nd -r -l1 -np -A chr??.fa.gz,chr?.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/# Sequence - UCSC
+	cd $gpdata/Masks
+	wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
+fi
+
+###################
+## DATA ANALYSIS ##
+###################
 
 START=$(date +%s)
+
 #genome_analysis() {
-	#for i in `seq 1 22` X Y; do
-		i=21
+	for i in `seq 1 22` X Y; do
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -137,12 +140,13 @@ START=$(date +%s)
 		echo -e "Generating the pseudo-FASTA file"
 		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
 		if [ ! -e "gffseq_chr$i.RData" ]; then
-		GFFtoFASTA8.R chr$i.gff chr$i.fa $i # Puts the GFF annotation in a sequence
+		GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
 		fi			
 
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
-		maskfile=$(cd $maskdir && ls -d *chr$i.*)	
+		maskfile=$(cd $maskdir && ls -d *chr$i.*)
+		echo $maskfile	
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		ln -s $maskdir/$maskfile # Create symbolic links for the index files
@@ -150,16 +154,13 @@ START=$(date +%s)
 		echo $gpfile
 		GeneByGene7.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
-		rm chr$i*
-# done
+		#rm chr$i*
+done
 	#}
 
 #############################
 ## ANALYSIS BY POPULATIONS ##
 #############################
-
-
-
 
 END=$(date +%s)
 DIFF=$(( $END - $START ))

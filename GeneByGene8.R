@@ -143,19 +143,18 @@ popanalysis <- function(filename,ini,end,ac.pos) {
   
   # Bial contains only positions that are found in the accessibility mask
   
-  bialhuman <- bial[1:n,,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
-  misshuman <- colSums(is.na(bialhuman))>0 # Sites missing in humans (e.g. structural variants)
-  poly.sites <<- apply(bialhuman,2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
-  bialhuman <- bialhuman[,poly.sites,drop=FALSE] # Keep only polymorphic sites
+  #bialhuman <- bial[1:n,,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
+  misshuman <- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
+  poly.sites <<- apply(bial[1:n,,drop=F],2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
+  #bialhuman <- bialhuman[,poly.sites,drop=FALSE] # Keep only polymorphic sites
+  # bial[1:n,poly.sites,drop=F]
   
   cat("\nBiallelic matrix filtered\n")
   
   ## SITE FREQUENCY SPECTRUM (FOLDED) ##
   
-  MAF <<- colSums(bial[1:n,,drop=F] == 1)/nrow(bialhuman) # We DO NOT remove monomorphic alleles
+  MAF <<- colSums(bial[1:n,,drop=F] == 1)/n # We DO NOT remove monomorphic alleles
   MAF.df <- data.frame(POS=names(MAF),MAF=unname(MAF)) # Position and DAF of biallelic variants
-  
-  print(sort(sapply(ls(),function(x){object.size(get(x))})))
   
   # IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
   temp <- system(sprintf('gunzip -c %s | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file  
@@ -192,12 +191,12 @@ popanalysis <- function(filename,ini,end,ac.pos) {
   } else {polysites <- 0} # If not available, we assume 0
   m <- wsize-sum(misshuman,na.rm=T)-polysites
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
-  if (is.null(bialhuman)||dim(bialhuman)[2]==0) {
+  if (is.null(bial[1:n,poly.sites,drop=F])||dim(bial[1:n,poly.sites,drop=F])[2]==0) {
     S <- 0
     k <- 0
   } else {
-    S <- ncol(bialhuman) # Number of variants
-    freqs <- apply(bialhuman,2,table)
+    S <- ncol(bial[1:n,poly.sites,drop=F]) # Number of variants
+    freqs <- apply(bial[1:n,poly.sites,drop=F],2,table)
     k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
   }
   
@@ -296,8 +295,8 @@ for(i in 1:ngenes) {
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
   filename <- merge.vcf(ini,end)
   tabsum[i,] <- popanalysis(filename,ini,end,ac.pos)
-  Sys.sleep(3)
   print(sort(sapply(ls(),function(x){object.size(get(x))})))
+  if(end-ini > 500000) {gc()}
 }
 Sys.time()-init
 
@@ -330,7 +329,7 @@ colnames(tabsum) <- db.names
 # b) Chromosome is expressed in "chrNN" format.
 
 export <- cbind(gendata,tabsum)
-export.name <- "GenesDB2"
+export.name <- "GenesDB"
 
 suppressMessages(library(DBI))
 suppressMessages(library(RMySQL))

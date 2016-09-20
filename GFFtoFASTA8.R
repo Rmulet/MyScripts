@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gffpath <- "chr21.gff"; ref.chr <- "chr21.fa"; chrom <- "21"
+# ref.chr <- "chr21.fa"; chrom <- "21"
 
 # This script creates a FASTA-like file with numeric codes identifying each feature. Thus, 9 is a gene,
 # 8 is a CDS, 5 is 5'-UTR and so on. For most features, it takes them directly from the GFF; for the coding
@@ -9,6 +9,8 @@
 
 # UPDATE: This script DOES NOT employ a GFF file (for that, refer to previous versions). Instead, it relies 
 # on the TXDB package which contains UCSC genes.
+# UPDATE: Make sure that gffseq is a vector of integers (halves memory). Allow NAs in the 'fold' vector by
+# keeping the last row of 'assocmat'.
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(stringr))
@@ -18,9 +20,8 @@ suppressMessages(library(stringr))
 #############################
 
 args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
-gffpath <- args[1] # Name of GFF file of the chromosome
-ref.chr <- args[2] # Name of the reference chromosome in FASTA
-chrom <- args[3] # Chromosome number
+ref.chr <- args[1] # Name of the reference chromosome in FASTA
+chrom <- args[2] # Chromosome number
 
 if (args[1] == "-h" | args[1] == "--help") {
   cat("\nGFFtoFASTA - A script that creates a FASTA-like file with numeric codes identifying each feature.\n")
@@ -65,7 +66,6 @@ check_fold <- function(triplet,pos) {
 
 # Associative array: fold for each possible position
 assocmat <- t(apply(trips,1,function(x){sapply(0:2,function(y){check_fold(x,y)})}))
-assocmat <- assocmat[-nrow(assocmat),]
 assocmat[assocmat == 1] <- 0
 
 #####################################
@@ -97,7 +97,7 @@ for (n in 1:length(features)) {
     gffseq[start(feature[i]):end(feature[i])] <- symbol
   }
 }
-rm(c("genes","exons","fiveUTR","threeUTR","CDS"))
+rm(list=c("mRNA","exons","fiveUTR","threeUTR","CDS"))
 gc()
 # sum(gffseq == 9,na.rm=T) # Sanity check. 18950868 gene.
 
@@ -144,14 +144,18 @@ for (x in 1:length(codingRNA)) { # x for each gene/transcript in the GFF file
   for (n in 1:nrow(tab)){
     pos2 <- pos1+abs(tab[n,2]-tab[n,1]) # Position in the fold object (concatenated CDS). Add +1 because it starts at pos1!
     local.fold <- fold[pos1:pos2]
-    gffseq[tab[n,1]:tab[n,2]][local.fold == 0] <- 0
+    print(c(pos1,pos2))
+    print(local.fold)
+    gffseq[tab[n,1]:tab[n,2]][local.fold == 0] <- 0L
     # Four-fold are less constrained that 5UTR, 3UTR and introns:
     relaxed <- gffseq[tab[n,1]:tab[n,2]] == 8 | gffseq[tab[n,1]:tab[n,2]] == 7 # Relaxed positions (i.e. not 5, 3, 0 or 9)
-    gffseq[tab[n,1]:tab[n,2]][relaxed & local.fold == 4] <- 4 # Hence, they can be replaced with 4-fold.
+    gffseq[tab[n,1]:tab[n,2]][relaxed & local.fold == 4] <- 4L # Hence, they can be replaced with 4-fold.
     pos1 <- pos2+1 
   }
   #print(x) # ID of the analysed gene
 }
 Sys.time()-init
+
+if (typeof(gffseq) != "integer") {gffseq <- as.integer(gffseq)} # Store as integer to save memory!
 
 save(gffseq,file=sprintf("gffseq_chr%s.RData",chrom))
