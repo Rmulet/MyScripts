@@ -33,7 +33,7 @@ if (args[1] == "-h" | args[1] == "--help") {
   quit()
 }
 
-nfields <- 91 # 7 + 6*14
+nfields <- 91 # 7 for polymorphism + 6*14 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -151,7 +151,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   misshuman <- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
   poly.sites <<- apply(bial[1:n,,drop=F],2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
   #bialhuman <- bialhuman[,poly.sites,drop=FALSE] # Keep only polymorphic sites
-  # bial[1:n,poly.sites,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
+  #bial[1:n,poly.sites,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
   
   cat("\nBiallelic matrix filtered\n")
   
@@ -163,7 +163,6 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   # IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
   temp <- system(sprintf('gunzip -c %s | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file  
   gpimport <- read.table(textConnection(temp),sep="\t",stringsAsFactors = FALSE,header=TRUE)
-  # gpimport <- read.table("gpimport.txt",sep="\t",stringsAsFactors = FALSE,header=TRUE)
   gpances <- toupper(sapply(gpimport[,3],function(x){str_match(x,"AA=([:alpha:])\\|")[2]},USE.NAMES=FALSE)) # Capture the ancestral allele
   aarefs <- na.omit(cbind(gpimport[,1:2],ANC=gpances)) # Na.omit removes positions without known AA and divergent sites
   
@@ -190,7 +189,6 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
   if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
     polysites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
-    print(polysites) 
      } else {polysites <- 0} # If not available, we assume 0
   m <- wsize-sum(misshuman,na.rm=T)-polysites
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
@@ -249,24 +247,9 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
 ## GENE ANALYSIS ##
 ###################
 
-## RETRIEVE ENTREZ GENES FROM TXDB:
-
-load(sprintf("gffseq_chr%s.RData",chrom))
-cat("GFF sequence loaded\n")
-txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
-seqlevels(txdb) <- sprintf("chr%s",chrom)
-grgenes <- genes(txdb)
-start(grgenes) <- start(grgenes)-500 # Upstream(-strand)
-end(grgenes) <- end(grgenes)+500 # Downstream(+strand)
-ngenes <- length(grgenes)
-
-## CREATE A GENE SPECIFIC MERGE:
-
-filename <- "merge_gene.vcf.gz"
-
 merge.vcf <- function(ini,end) {
   t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
-                 chrom,ini,end,gpfile,alnfile)))
+                          chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
     system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
@@ -275,25 +258,36 @@ merge.vcf <- function(ini,end) {
   system("tabix -p vcf merge_gene.vcf.gz")
 }
 
-# Note that the coordinates of the MASK are in BED format and therefore 0-based, whereas the GFF with
-# the genes and the GRanges objects are 1-based. To convert from 0 to 1-based, START+1:END.
+## RETRIEVE ENTREZ GENES AND PREPARE DATA TABLE:
 
-# TABLE CONTAINING THE DATA:
+load("GenesTable.RData")
+gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
+gendata <- gendata[order(gendata$start),]
+ngenes <- nrow(gendata)
+
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
-gendata <- data.frame(name=grgenes$"gene_id",chr=rep(chrom,ngenes),start=start(grgenes),end=end(grgenes),missing=numeric(ngenes))
-# colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Pns","Ps","Dns","Ds")
-# Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d
 colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
-# filename <- "chr22_merge.vcf.gz"
-## USING THE FASTA SEQUENCE:
+filename <- "merge_gene.vcf.gz"
+
+## PREANALYSIS: GFF AND MASK:
+
+load(sprintf("gffseq_chr%s.RData",chrom))
+
+
 library("Biostrings")
 maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
 cat("Maskfile loaded\n")
+
+# Note that the coordinates of the MASK are in BED format and therefore 0-based, whereas the GFF with
+# the genes and the GRanges objects are 1-based. To convert from 0 to 1-based, START+1:END.
+
+## GENE BY GENE ANALYSIS:
+
 init <- Sys.time()
-for(i in 1:20) {
+for (i in 1:ngenes) {
   print(sprintf("Gene number: %d",i))
-  ini <- start(grgenes[i]); end <- end(grgenes[i])
+  ini <- gendata$start[i]; end <- gendata$end[i]
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {

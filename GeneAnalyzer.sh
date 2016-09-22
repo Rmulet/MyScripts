@@ -4,9 +4,11 @@
 
 # IMPORTANT: This pipeline assumes the usage of a GFF file with UCSC annotation. Since UCSC data are not provided in this format
 # by default, the Perl script UCSC_table2GFF3 is used. Alternatively, it could be downloaded and transformed with gtf2gff3.pl
-# The
 
-# Add DOWNLOAD and MASK option
+# Add MASK option
+
+# EXECUTE 'Dependencies.R' once before initializing the pipeline: it contains R libraries that must be installed AND generates a list
+# of genes that will be analyzed.
 
 display_usage() { 
 	echo -e "\nEvaluates natural selection regimes and population genetics statistics in a gene-restricted manner" 
@@ -96,8 +98,7 @@ touch "Warnings.dat"
 START=$(date +%s)
 
 #genome_analysis() {
-	#for i in `seq 1 22`; do # Only autosomal chromosomes
-		i=4
+	for i in `seq 1 22`; do # Only autosomal chromosomes
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -151,13 +152,13 @@ START=$(date +%s)
 		maskfile=$(cd $maskdir && ls -d *chr$i.*)
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
-		ln -s $maskdir/$maskfile # Create symbolic links for the index files
+		ln -s $maskdir/$maskfile # Create symbolic links for the mask
 		echo -e "Analysing polymorphism and divergence in chr$i"
 		echo $gpfile $alnfile $maskfile $i
-		GeneByGene8.R $gpfile $alnfile $maskfile $i
+		GeneByGeneAN.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
 		rm chr$i*.vcf* # Removes the symbolic links 
-done
+	done
 	#}
 
 #############################
