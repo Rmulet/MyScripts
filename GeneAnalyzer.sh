@@ -66,11 +66,11 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-gpraw="/home/roger/Documents/2_GenomicsData/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
-gpdat="/home/roger/Documents/2_GenomicsData/1000GP" # No files required 
-alnraw="/home/roger/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
-alndat="/home/roger/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="/home/roger/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+gpraw="$HOME/Documents/2_GenomicsData/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
+gpdat="$HOME/Documents/2_GenomicsData/1000GP" # No files required 
+alnraw="$HOME/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
+alndat="$HOME/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
+finaldir="$HOME/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
 
 maskdir=$gpdat/Masks/FASTA
 
@@ -92,10 +92,12 @@ fi
 ## DATA ANALYSIS ##
 ###################
 
+touch "Warnings.dat"
 START=$(date +%s)
 
 #genome_analysis() {
-	for i in `seq 1 22` X Y; do
+	#for i in `seq 1 22`; do # Only autosomal chromosomes
+		i=4
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -133,28 +135,28 @@ START=$(date +%s)
 			gunzip chr$i.fa.gz # Uncompress the FASTA sequence
 			echo -e "Converting .MFA alignment to VCF for chr$i"
 			MFAtoVCF.py -s chr$i.fa -q Chimp -c $i $alnstart # Convert MFA to VCF. VCF.GZ file is automatically tabixed.
+			rm $alnstart
 		fi
 
 		# PREANALYSIS (GFF to FASTA) #	
 		cd $finaldir
-		echo -e "Generating the pseudo-FASTA file"
-		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
+		echo -e "Extracting the annotation file to a sequence format"
 		if [ ! -e "gffseq_chr$i.RData" ]; then
-		GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
-		fi			
+			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
+			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+		fi
 
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
 		maskfile=$(cd $maskdir && ls -d *chr$i.*)
-		echo $maskfile	
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		ln -s $maskdir/$maskfile # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		echo $gpfile
-		GeneByGene7.R $gpfile $alnfile $maskfile $i
+		echo $gpfile $alnfile $maskfile $i
+		GeneByGene8.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
-		#rm chr$i*
+		rm chr$i*.vcf* # Removes the symbolic links 
 done
 	#}
 

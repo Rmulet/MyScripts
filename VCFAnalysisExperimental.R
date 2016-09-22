@@ -1,6 +1,7 @@
 #!/usr/bin/Rscript
 
-#setwd("~/Documents/2_GenomicsData/TestPopGenome")
+#setwd("~/Documents/2_GenomicsData/Final")
+# filename <- "merge.3.vcf.gz"
 #filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603-1; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"; window = 7
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates

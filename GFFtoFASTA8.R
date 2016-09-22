@@ -14,6 +14,7 @@
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(stringr))
+sink(file="Warnings.dat",append=TRUE)
 
 #############################
 ## IMPORT AND PREPARE DATA ##
@@ -144,8 +145,6 @@ for (x in 1:length(codingRNA)) { # x for each gene/transcript in the GFF file
   for (n in 1:nrow(tab)){
     pos2 <- pos1+abs(tab[n,2]-tab[n,1]) # Position in the fold object (concatenated CDS). Add +1 because it starts at pos1!
     local.fold <- fold[pos1:pos2]
-    print(c(pos1,pos2))
-    print(local.fold)
     gffseq[tab[n,1]:tab[n,2]][local.fold == 0] <- 0L
     # Four-fold are less constrained that 5UTR, 3UTR and introns:
     relaxed <- gffseq[tab[n,1]:tab[n,2]] == 8 | gffseq[tab[n,1]:tab[n,2]] == 7 # Relaxed positions (i.e. not 5, 3, 0 or 9)
@@ -156,6 +155,12 @@ for (x in 1:length(codingRNA)) { # x for each gene/transcript in the GFF file
 }
 Sys.time()-init
 
+###################
+## SAVING OUTPUT ##
+###################
+
 if (typeof(gffseq) != "integer") {gffseq <- as.integer(gffseq)} # Store as integer to save memory!
 
 save(gffseq,file=sprintf("gffseq_chr%s.RData",chrom))
+
+closeAllConnections()

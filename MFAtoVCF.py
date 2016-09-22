@@ -10,7 +10,7 @@
 # 3) 2 different divergences-> Missing (.) 
 # 4) Query gap -> Missing (.) 
 
-# WARNING: This program must be provided with the reference sequence of that chromosome. 
+# WARNING: This program must be provided with the reference sequence of that chromosome in FASTA format.
 # WARNING: By default, the script does NOT convert non-aligned regions to missing information. To do so, specif the "-n" option.
 # UPDATE 1: The script has been cleaned of lines added during the testing stage.
 # UPDATE 2: The "Human" column has been removed so that it does not interfere with the final merge.

@@ -119,7 +119,7 @@ k=1
 while read chrom pos1 pos2 level
 do
 	# EXTRACT BED INFORMATION
-	chrom="${chrom##*[A-Za-z]}" # To extract the chromosome number
+	chrom="${chrom##*chr}" # To extract the chromosome number/X/Y
 	#echo $chrom $pos1 $pos2 
 	if [ "$(($pos2 - $pos1))" -le "$WINDOW" ]; then # If size region < size window, there is no need to examine it 
 		echo -e "$pos2 - $pos1 is inferior to $WINDOW. This segment will be skipped."
@@ -140,7 +140,7 @@ do
 
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
-	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT >/dev/null # Avoid the message visualization!! 
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT /dev/null # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	echo -e "Analysis with R complete. Data exported to the MySQL database."
 	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space

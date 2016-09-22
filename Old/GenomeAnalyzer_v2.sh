@@ -91,7 +91,7 @@ fi
 
 genome_analysis() {
 	#for i in `seq 1 22` X Y; do
-		i="X"
+		i="Y"
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -106,17 +106,13 @@ genome_analysis() {
 		fi
 
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
-			echo -e "Excluding males from chromosome X"
 			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',')
-			bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
+			bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
 			mv chr$i.temp.vcf.gz $gpfile
-			tabix -p vcf chr$i.temp.vcf f $gpfile
+			tabix -p vcf $gpfile
 		elif [ "$i" == "Y" ]; then
-			echo -e "Converting chromosome Y to pseudo-diploid"
-			zcat $gpfile | perl -p -e 's/\t([01.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
-			#echo '##fileformat=VCFv4.1\n##FILTER=<ID=PASS,Description="All filters passed">"' > chr$i.temp.vcf
-			#bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\tAA=%INFO/AA;AC=%INFO/AC;AN=%INFO/AN\tGT\t[\t%GT|%GT]\n' >> chr$i.temp.vcf
-			bgzip chr$i.temp.vcf; mv chr$i.temp.vcf.gz $gpfile
+			bcftools convert -Oz --haploid2diploid $gpfile > chr$i.temp.vcf.gz
+			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile
 		fi	
 
@@ -145,17 +141,13 @@ genome_analysis() {
 			MFAtoVCF.py -s chr$i.fa -q Chimp -c $i $alnstart # Convert MFA to VCF. VCF.GZ file is automatically tabixed.
 		fi
 
-		# PREANALYSIS (GFF to FASTA) #	
-		cd $finaldir
-		echo -e "Extracting the annotation file to a sequence format"
-		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
-		if [ ! -e "gffseq_chr$i.RData" ]; then
-		GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
-		fi			
-
 		# MERGE AND ANALYSIS #
+		cd $finaldir
 		echo -e "Preparing the accessibility mask for chr$i"
-		grep "chr$i" $mskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
+		grep "chr$i" $mskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.
+		echo -e "Extracting the annotation file of chr$i"
+		zcat gencode.v19.annotation.gff3.gz | grep -P "^chr$i\t" | sed "s/^chr$i/$i/" > chr$i.gff  # Match the ID format of GFF to the VCF files
+		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"

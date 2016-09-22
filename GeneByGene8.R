@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gpfile <- "chr22_gp.vcf.gz" ; alnfile <- "chr22_aln.vcf.gz"; chrom <- "22"; maskfile <- "20140520.chr22.pilot_mask.fasta.gz"
+# gpfile <- "chr4_gp.vcf.gz" ; alnfile <- "chr4_aln.vcf.gz"; chrom <- "4" ; maskfile <- "20140520.chr4.pilot_mask.fasta.gz"
 ## filename <- "chr22_merge.vcf.gz"; ini <- 38944867; end <- 38966701; chrom <- "22"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
@@ -13,6 +13,9 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
+suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
+# zz <- file("Warnings.dat","w")
+# sink("Warnings.dat",append=TRUE)
 
 #############################
 ## IMPORT AND PREPARE DATA ##
@@ -29,6 +32,8 @@ if (args[1] == "-h" | args[1] == "--help") {
   cat("\nUsage: GFFtoFASTA.R [GP FILE] [ALN FILE] [MASKFILE]\n\n")
   quit()
 }
+
+nfields <- 91 # 7 + 6*14
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -112,7 +117,7 @@ mkt.extended <- function (sel=0,neu=4) {
 ## POPGENOME ANALYSIS FUNCTION ##  
 #################################
 
-popanalysis <- function(filename,ini,end,ac.pos) {
+popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=FALSE) 
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
@@ -134,20 +139,19 @@ popanalysis <- function(filename,ini,end,ac.pos) {
   total <- length(individuals) # Total number of samples (including outgroup)
   bial <- get.biallelic.matrix(region,1) # Biallelic matrix of the window
   ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
-  bial <- bial[,ac.bial,drop=F]
+  bial <- bial[,ac.bial,drop=F] # Biallelic matrix of accessible variants
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- c(rep(0,5),rep(NA,85)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
     return(newrow)
   }
   wsize <- end-ini+1 # GFF coordinates, 1-based
   
   # Bial contains only positions that are found in the accessibility mask
   
-  #bialhuman <- bial[1:n,,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
   misshuman <- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
   poly.sites <<- apply(bial[1:n,,drop=F],2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
   #bialhuman <- bialhuman[,poly.sites,drop=FALSE] # Keep only polymorphic sites
-  # bial[1:n,poly.sites,drop=F]
+  # bial[1:n,poly.sites,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
   
   cat("\nBiallelic matrix filtered\n")
   
@@ -163,8 +167,6 @@ popanalysis <- function(filename,ini,end,ac.pos) {
   gpances <- toupper(sapply(gpimport[,3],function(x){str_match(x,"AA=([:alpha:])\\|")[2]},USE.NAMES=FALSE)) # Capture the ancestral allele
   aarefs <- na.omit(cbind(gpimport[,1:2],ANC=gpances)) # Na.omit removes positions without known AA and divergent sites
   
-  print(sort(sapply(ls(),function(x){object.size(get(x))})))
-  
   # CALCULATE DERIVED ALLELE FREQUENCY (DAF)
   mafan <- merge(MAF.df,aarefs) # Intersection between SNPs in the biallelic matrix and the AA in the VCF file
   if (dim(mafan)[1] > 0) { # Avoid windows where variants have no known AA
@@ -178,17 +180,18 @@ popanalysis <- function(filename,ini,end,ac.pos) {
     DAF <- hist(mafan$DAF,seq(0.0,1,0.05),plot=F)$counts
     DAF <- paste(DAF,collapse = ";")
   } else {DAF <- NA}
-  sort(sapply(ls(),function(x){object.size(get(x))}))
   Sys.sleep(3)
-  #DAF <- "DA"
+  
+  print(sort(sapply(ls(),function(x){object.size(get(x))})))
   
   ## POLYMORPHISM ## 
   
   # DETERMINE M (EXCLUDING MISSING AND POLYALLELIC)
   # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
   if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
-    polysites <- sum(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
-  } else {polysites <- 0} # If not available, we assume 0
+    polysites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
+    print(polysites) 
+     } else {polysites <- 0} # If not available, we assume 0
   m <- wsize-sum(misshuman,na.rm=T)-polysites
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
   if (is.null(bial[1:n,poly.sites,drop=F])||dim(bial[1:n,poly.sites,drop=F])[2]==0) {
@@ -248,10 +251,8 @@ popanalysis <- function(filename,ini,end,ac.pos) {
 
 ## RETRIEVE ENTREZ GENES FROM TXDB:
 
-suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
-library(GenomicRanges)
-
 load(sprintf("gffseq_chr%s.RData",chrom))
+cat("GFF sequence loaded\n")
 txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
 seqlevels(txdb) <- sprintf("chr%s",chrom)
 grgenes <- genes(txdb)
@@ -261,19 +262,24 @@ ngenes <- length(grgenes)
 
 ## CREATE A GENE SPECIFIC MERGE:
 
+filename <- "merge_gene.vcf.gz"
+
 merge.vcf <- function(ini,end) {
-  system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
-                 chrom,ini,end,gpfile,alnfile))
+  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                 chrom,ini,end,gpfile,alnfile)))
+  if ("try-error" %in% class(t)) {
+    gc(reset=T)
+    system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                   chrom,ini,end,gpfile,alnfile))
+  }
   system("tabix -p vcf merge_gene.vcf.gz")
-  filename <- "merge_gene.vcf.gz"
-  return(filename) 
 }
 
 # Note that the coordinates of the MASK are in BED format and therefore 0-based, whereas the GFF with
 # the genes and the GRanges objects are 1-based. To convert from 0 to 1-based, START+1:END.
 
 # TABLE CONTAINING THE DATA:
-tabsum <- as.data.frame(matrix(numeric(ngenes*91),ncol=91,nrow=ngenes))
+tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
 gendata <- data.frame(name=grgenes$"gene_id",chr=rep(chrom,ngenes),start=start(grgenes),end=end(grgenes),missing=numeric(ngenes))
 # colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Pns","Ps","Dns","Ds")
 # Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d
@@ -281,22 +287,25 @@ colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","P
 
 # filename <- "chr22_merge.vcf.gz"
 ## USING THE FASTA SEQUENCE:
-init <- Sys.time()
 library("Biostrings")
 maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
+cat("Maskfile loaded\n")
 init <- Sys.time()
-for(i in 1:ngenes) {
-  print(sprintf("Gene number:%d",i))
+for(i in 1:20) {
+  print(sprintf("Gene number: %d",i))
   ini <- start(grgenes[i]); end <- end(grgenes[i])
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
-  if (sum(pass) == 0) {gendata$missing[i] <- 100}
+  if (sum(pass) == 0) {
+    gendata$missing[i] <- 100
+    tabsum[i,] <- rep(NA,nfields) 
+    next}
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
-  filename <- merge.vcf(ini,end)
-  tabsum[i,] <- popanalysis(filename,ini,end,ac.pos)
-  print(sort(sapply(ls(),function(x){object.size(get(x))})))
-  if(end-ini > 500000) {gc()}
+  merge.vcf(ini,end)
+  tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos)
+  # print(sort(sapply(ls(),function(x){object.size(get(x))})))
+  if(end-ini > 500000) {gc(reset=T)}
 }
 Sys.time()-init
 
@@ -344,6 +353,7 @@ t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
 if ("try-error" %in% class(t)) {
   save(export,file=sprintf("failedexport_chr%s.RData",chrom))
 }
+write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
 
 if (first == TRUE) {# Remove if we want to concatenate various chromosomes
   dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
@@ -351,3 +361,4 @@ if (first == TRUE) {# Remove if we want to concatenate various chromosomes
 }
 
 on.exit(dbDisconnect(con))
+closeAllConnections()
