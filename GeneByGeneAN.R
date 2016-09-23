@@ -13,7 +13,7 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
-suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
+
 # zz <- file("Warnings.dat","w")
 # sink("Warnings.dat",append=TRUE)
 
@@ -248,11 +248,11 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
 ###################
 
 merge.vcf <- function(ini,end) {
-  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+  t <- try(system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
                           chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
-    system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+    system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
                    chrom,ini,end,gpfile,alnfile))
   }
   system("tabix -p vcf merge_gene.vcf.gz")
