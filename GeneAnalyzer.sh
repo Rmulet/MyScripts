@@ -4,11 +4,12 @@
 
 # IMPORTANT: This pipeline assumes the usage of a GFF file with UCSC annotation. Since UCSC data are not provided in this format
 # by default, the Perl script UCSC_table2GFF3 is used. Alternatively, it could be downloaded and transformed with gtf2gff3.pl
+# UPDATE: This version relies on a previous execution of the 'Dependencies.R' script to obtain the list of genes.
 
 # Add MASK option
 
 # EXECUTE 'Dependencies.R' once before initializing the pipeline: it contains R libraries that must be installed AND generates a list
-# of genes that will be analyzed.
+# of genes that will be analyzed. The purpose of this is two-fold: enable the execution in old machines (e.g. Andromeda) and speed up the
 
 display_usage() { 
 	echo -e "\nEvaluates natural selection regimes and population genetics statistics in a gene-restricted manner" 
@@ -68,13 +69,15 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-gpraw="$HOME/Documents/2_GenomicsData/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
-gpdat="$HOME/Documents/2_GenomicsData/1000GP" # No files required 
-alnraw="$HOME/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
-alndat="$HOME/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="$HOME/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+WORKING="$HOME/Documents/2_GenomicsData" # MODIFY THIS VARIABLE TO EXECUTE IN A DIFFERENT DIRECTORY
 
-maskdir=$gpdat/Masks/FASTA
+gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
+gpdat="$WORKING/1000GP" # No files required 
+alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
+alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
+finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+
+maskdir="$gpdat/Masks/FASTA"
 
 ## DOWNLOAD FILES [OPTIONAL]
 if [ "$DL" == "TRUE" ]; then
@@ -94,12 +97,14 @@ fi
 ## DATA ANALYSIS ##
 ###################
 
+cd $finaldir
 touch "Warnings.dat"
 START=$(date +%s)
 
 #genome_analysis() {
-	for i in `seq 1 22`; do # Only autosomal chromosomes
+	#for i in `seq 14 22`; do # Only autosomal chromosomes
 		# POLYMORPHISM #
+		i=21
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
 		cd $gpdat
@@ -144,7 +149,7 @@ START=$(date +%s)
 		echo -e "Extracting the annotation file to a sequence format"
 		if [ ! -e "gffseq_chr$i.RData" ]; then
 			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
-			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+			GFFtoFASTA.R chr$i.fa $i # Puts the GFF annotation in a sequence
 		fi
 
 		# MERGE AND ANALYSIS #
@@ -155,7 +160,7 @@ START=$(date +%s)
 		ln -s $maskdir/$maskfile # Create symbolic links for the mask
 		echo -e "Analysing polymorphism and divergence in chr$i"
 		echo $gpfile $alnfile $maskfile $i
-		GeneByGeneAN.R $gpfile $alnfile $maskfile $i
+		GeneByGene9.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
 		rm chr$i*.vcf* # Removes the symbolic links 
 	done

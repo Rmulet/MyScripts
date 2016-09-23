@@ -157,10 +157,10 @@ measures <- function(object) {
     winstart <- windows[window,1] # Select the start position in that window
     # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
     if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
-      polyal <- region@region.data@polyallelic.sites[[1]] # Positions of all polyalleles
-      polysites <- sum(!is.na(match(polyal,winstart:(winstart+wsize)))) # N polyallelic sites in that window
+      multial <- region@region.data@polyallelic.sites[[1]] # Positions of all polyalleles
+      multisites <- sum(!is.na(match(multial,winstart:(winstart+wsize)))) # N polyallelic sites in that window
     } else {polysites <- 0} # If not available, we assume 0
-    m <- wsize-sum(misshuman,na.rm=T)-polysites
+    m <- wsize-sum(misshuman,na.rm=T)-multisites
     # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
     if (is.null(bialhuman)||dim(bialhuman)[2]==0) {
       S <- 0

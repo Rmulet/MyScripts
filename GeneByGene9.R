@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gpfile <- "chr4_gp.vcf.gz" ; alnfile <- "chr4_aln.vcf.gz"; chrom <- "4" ; maskfile <- "20140520.chr4.pilot_mask.fasta.gz"
+# gpfile <- "chr8_gp.vcf.gz" ; alnfile <- "chr8_aln.vcf.gz"; chrom <- "8" ; maskfile <- "20140520.chr8.pilot_mask.fasta.gz"
 ## filename <- "chr22_merge.vcf.gz"; ini <- 38944867; end <- 38966701; chrom <- "22"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
@@ -13,7 +13,9 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
-suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
+suppressMessages(library(DBI))
+suppressMessages(library(RMySQL))
+
 # zz <- file("Warnings.dat","w")
 # sink("Warnings.dat",append=TRUE)
 
@@ -118,8 +120,13 @@ mkt.extended <- function (sel=0,neu=4) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos) {
+  vcount <- as.numeric(system(sprintf('zcat %s | grep -v "#" | wc -l',filename),intern=TRUE))
+  if (vcount == 0) { # Check if there are variants to prevent PopGenome error
+    cat ("There are no variants in this VCF file")
+    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
+    return(newrow)
+  }
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-  # region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=FALSE) 
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
 
   ## DEFINE POPULATION/OUTGROUP ##
@@ -188,9 +195,9 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   # DETERMINE M (EXCLUDING MISSING AND POLYALLELIC)
   # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
   if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
-    polysites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
-     } else {polysites <- 0} # If not available, we assume 0
-  m <- wsize-sum(misshuman,na.rm=T)-polysites
+    multisites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
+     } else {multisites <- 0} # If not available, we assume 0
+  m <- wsize-sum(misshuman,na.rm=T)-multisites
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
   if (is.null(bial[1:n,poly.sites,drop=F])||dim(bial[1:n,poly.sites,drop=F])[2]==0) {
     S <- 0
@@ -263,8 +270,11 @@ merge.vcf <- function(ini,end) {
 load("GenesTable.RData")
 gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
 gendata <- gendata[order(gendata$start),]
+gendata$start <- gendata$start-500 # Upstream(-strand)
+gendata$end <- gendata$end+500 # Downstream(+strand)
 ngenes <- nrow(gendata)
 
+# TABLE WITH DATA:
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
 colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
@@ -273,7 +283,6 @@ filename <- "merge_gene.vcf.gz"
 ## PREANALYSIS: GFF AND MASK:
 
 load(sprintf("gffseq_chr%s.RData",chrom))
-
 
 library("Biostrings")
 maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
@@ -334,9 +343,10 @@ colnames(tabsum) <- db.names
 export <- cbind(gendata,tabsum)
 export.name <- "GenesDB"
 
-suppressMessages(library(DBI))
-suppressMessages(library(RMySQL))
+# EXPORT DATA TABLE
+write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
 
+# EXPORT TO MYSQL DATABASE
 con <- dbConnect(RMySQL::MySQL(),
                  user="root", password="RM333",
                  dbname="PEGH", host="localhost")
@@ -347,7 +357,6 @@ t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
 if ("try-error" %in% class(t)) {
   save(export,file=sprintf("failedexport_chr%s.RData",chrom))
 }
-write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
 
 if (first == TRUE) {# Remove if we want to concatenate various chromosomes
   dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
