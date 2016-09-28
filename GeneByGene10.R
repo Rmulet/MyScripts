@@ -9,6 +9,7 @@
 # UPDATE 2: PopGenome steps have been separated as a distinct function.
 # UPDATE 3: It is no longer necessary to import FASTA or GFF, as we are using ourw own vector.
 # UPDATE 4: Memory limitations due to excessive size of bialhuman and bial.
+# UPDATE 5: Correction in the way m/m0 are calculated.
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
@@ -35,7 +36,7 @@ if (args[1] == "-h" | args[1] == "--help") {
   quit()
 }
 
-nfields <- 91 # 7 for polymorphism + 6*14 for selection
+nfields <- 103 # 7 for polymorphism + 6*16 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -59,7 +60,7 @@ Theta <- function(S,m,n) { # S=Segregating sites; m=total sites; n=number of sam
 
 ## MKT CALCULATION ##
 
-mkt.extended <- function (sel=0,neu=4) {
+mkt.extended <- function (sel=0,neu=4,gffseq) {
   
   # Divtotal, poly.sites and bial.class are in Global to pass them
   
@@ -104,7 +105,7 @@ mkt.extended <- function (sel=0,neu=4) {
   # of each class. Doing that would require modifying the 'set.synnonsyn2' function
   # to obtain all codons and check fold in every position (0,1,2)
   
-  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
+  m.neu <- sum(sites[ac.pos] == neu,na.rm=T)
   m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
@@ -112,18 +113,18 @@ mkt.extended <- function (sel=0,neu=4) {
   y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
   d <- 1 - (f+b)
   
-  return(c(Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
+  return(c(Psel,Pneu,Dsel,Dneu,m.neu,m.sel,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
 }
 
 #################################
 ## POPGENOME ANALYSIS FUNCTION ##  
 #################################
 
-popanalysis <- function(filename,ini,end,chrom,ac.pos) {
+popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   vcount <- as.numeric(system(sprintf('zcat %s | grep -v "#" | wc -l',filename),intern=TRUE))
   if (vcount == 0) { # Check if there are variants to prevent PopGenome error
     cat ("There are no variants in this VCF file")
-    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,97)) # Empty rows
     return(newrow)
   }
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
@@ -148,7 +149,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
   bial <- bial[,ac.bial,drop=F] # Biallelic matrix of accessible variants
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,97)) # Empty rows
     return(newrow)
   }
   wsize <- end-ini+1 # GFF coordinates, 1-based
@@ -233,19 +234,17 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
   
-  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4) # sel = 0-fold; neu= 4-fold
-  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4) # sel = exon; neu= 4-fold
-  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4) # sel = 5-UTR; neu= 4-fold
-  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4) # sel = 3-UTR; neu= 4-fold
-  bial.class[bial.class == 3] <- 5 # To combine all UTR
-  mkt.UTR.4fold <-  mkt.extended(sel=5,neu=4) # sel = exon; neu= 4-fold
+  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq) # sel = 0-fold; neu= 4-fold
+  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq) # sel = exon; neu= 4-fold
+  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq) # sel = 5-UTR; neu= 4-fold
+  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4,gffseq) # sel = 3-UTR; neu= 4-fold
   bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
-  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4) # sel = exon; neu= 4-fold
+  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4,gffseq) # sel = exon; neu= 4-fold
   
   cat("MKT performed. Data will be stored in a new row\n")
   
   ## ADD NEW ROW ##
-  newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.UTR.4fold,mkt.inter.4fold)
+  newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.inter.4fold)
   memory.profile()
   return(newrow)  
 }
@@ -306,7 +305,7 @@ for (i in 1:ngenes) {
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
   merge.vcf(ini,end)
-  tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos)
+  tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos,gffseq)
   # print(sort(sapply(ls(),function(x){object.size(get(x))})))
   if(end-ini > 500000) {gc(reset=T)}
 }

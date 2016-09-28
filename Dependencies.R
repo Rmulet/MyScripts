@@ -24,3 +24,6 @@ genestable <- data.frame(name=grgenes$"gene_id",chr=seqnames(grgenes),start=star
 save(genestable,file="GenesTable.RData")
 
 # transcriptsBy(txdb,"gene")$"406885"
+
+# For some reason, when genes in chr22 (perhaps others) are retrieved individually with seqlevels = "chr22",
+# one more gene is counted (414763).

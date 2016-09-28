@@ -104,7 +104,7 @@ START=$(date +%s)
 #genome_analysis() {
 	#for i in `seq 14 22`; do # Only autosomal chromosomes
 		# POLYMORPHISM #
-		i=21
+		i=9
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
 		cd $gpdat
