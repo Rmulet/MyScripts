@@ -1,15 +1,15 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gpfile <- "chr9_gp.vcf.gz" ; alnfile <- "chr9_aln.vcf.gz"; chrom <- "9" ; maskfile <- "20140520.chr9.pilot_mask.fasta.gz"
-## filename <- "chr22_merge.vcf.gz"; ini <- 38944867; end <- 38966701; chrom <- "22"
+# gpfile <- "chr21_gp.vcf.gz" ; alnfile <- "chr21_aln.vcf.gz"; chrom <- "21" ; maskfile <- "20140520.chr21.pilot_mask.fasta.gz"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
 # are missing via vector.
 # UPDATE 2: PopGenome steps have been separated as a distinct function.
 # UPDATE 3: It is no longer necessary to import FASTA or GFF, as we are using ourw own vector.
 # UPDATE 4: Memory limitations due to excessive size of bialhuman and bial.
-# UPDATE 5: Correction in the way m/m0 are calculated.
+# UPDATE 5: Correction in the way m/m0 are calculated. 
+# UPDATE 6: File naming updated to allow parallelization.
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
@@ -36,7 +36,7 @@ if (args[1] == "-h" | args[1] == "--help") {
   quit()
 }
 
-nfields <- 103 # 7 for polymorphism + 6*16 for selection
+nfields <- 87 # Number of columns: 7 for polymorphism + 5*16 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -105,7 +105,7 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   # of each class. Doing that would require modifying the 'set.synnonsyn2' function
   # to obtain all codons and check fold in every position (0,1,2)
   
-  m.neu <- sum(sites[ac.pos] == neu,na.rm=T)
+  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
   m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
@@ -124,7 +124,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   vcount <- as.numeric(system(sprintf('zcat %s | grep -v "#" | wc -l',filename),intern=TRUE))
   if (vcount == 0) { # Check if there are variants to prevent PopGenome error
     cat ("There are no variants in this VCF file")
-    newrow <- c(rep(0,6),rep(NA,97)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
@@ -149,7 +149,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
   bial <- bial[,ac.bial,drop=F] # Biallelic matrix of accessible variants
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- c(rep(0,6),rep(NA,97)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
   wsize <- end-ini+1 # GFF coordinates, 1-based
@@ -253,15 +253,15 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 ## GENE ANALYSIS ##
 ###################
 
-merge.vcf <- function(ini,end) {
-  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
-                          chrom,ini,end,gpfile,alnfile)))
+merge.vcf <- function(ini,end,filename) { # Indicate the directory if experimental bcftools is local (Andromeda)
+  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+                          filename,chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
-    system(sprintf("bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
-                   chrom,ini,end,gpfile,alnfile))
+    system(sprintf("bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+                   filename,chrom,ini,end,gpfile,alnfile))
   }
-  system("tabix -p vcf merge_gene.vcf.gz")
+  system(sprintf("tabix -p vcf %s",filename))
 }
 
 ## RETRIEVE ENTREZ GENES AND PREPARE DATA TABLE:
@@ -269,15 +269,13 @@ merge.vcf <- function(ini,end) {
 load("GenesTable.RData")
 gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
 gendata <- gendata[order(gendata$start),]
-gendata$start <- gendata$start-500 # Upstream(-strand)
-gendata$end <- gendata$end+500 # Downstream(+strand)
+gendata$start <- gendata$start-500 # We chose to sequence 500 bp upstream and downstream [PMID: 21059791
+gendata$end <- gendata$end+500
 ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
 colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
-
-filename <- "merge_gene.vcf.gz"
 
 ## PREANALYSIS: GFF AND MASK:
 
@@ -293,21 +291,24 @@ cat("Maskfile loaded\n")
 ## GENE BY GENE ANALYSIS:
 
 init <- Sys.time()
-for (i in 1:ngenes) {
+for (i in 1:20) {
   ini <- gendata$start[i]; end <- gendata$end[i]
   print(sprintf("Gene number %d: %d - %d",i,ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
+  print(sum(pass))
   if (sum(pass) == 0) {
     gendata$missing[i] <- 100
     tabsum[i,] <- rep(NA,nfields) 
     next}
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
-  merge.vcf(ini,end)
+  filename <- sprintf("merge_gene%s",gendata$name[i])
+  merge.vcf(ini,end,filename)
   tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos,gffseq)
   # print(sort(sapply(ls(),function(x){object.size(get(x))})))
   if(end-ini > 500000) {gc(reset=T)}
+  file.remove(filename)
 }
 Sys.time()-init
 

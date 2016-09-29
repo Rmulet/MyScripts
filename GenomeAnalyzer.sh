@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# GENOME ANALYZER 0.1 - Calls the VCFmerger.sh script for the entire genome
+# WINDOWS ANALYZER 0.1 - Calls the VCFmerger.sh script for the entire genome
 
 # Add DOWNLOAD and MASK option
 

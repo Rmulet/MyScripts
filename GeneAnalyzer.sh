@@ -98,13 +98,13 @@ fi
 ###################
 
 cd $finaldir
-touch "Warnings.dat"
+# touch "Warnings.dat" # Store warning messages
 START=$(date +%s)
 
 #genome_analysis() {
 	#for i in `seq 14 22`; do # Only autosomal chromosomes
 		# POLYMORPHISM #
-		i=9
+		i=21
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
 		cd $gpdat
@@ -160,7 +160,7 @@ START=$(date +%s)
 		ln -s $maskdir/$maskfile # Create symbolic links for the mask
 		echo -e "Analysing polymorphism and divergence in chr$i"
 		echo $gpfile $alnfile $maskfile $i
-		GeneByGene9.R $gpfile $alnfile $maskfile $i
+		GeneByGene10.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
 		rm chr$i*.vcf* # Removes the symbolic links 
 	done
