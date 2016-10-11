@@ -101,8 +101,8 @@ cd $finaldir
 # touch "Warnings.dat" # Store warning messages
 START=$(date +%s)
 
-#genome_analysis() {
-	#for i in `seq 14 22`; do # Only autosomal chromosomes
+genome_analysis() {
+	#for i in `seq 1 22`; do # Only autosomal chromosomes
 		# POLYMORPHISM #
 		i=21
 		echo -e "Processing polymorphism data: chr$i" 
@@ -160,15 +160,33 @@ START=$(date +%s)
 		ln -s $maskdir/$maskfile # Create symbolic links for the mask
 		echo -e "Analysing polymorphism and divergence in chr$i"
 		echo $gpfile $alnfile $maskfile $i
-		GeneByGene10.R $gpfile $alnfile $maskfile $i
+		GeneByGene.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
 		rm chr$i*.vcf* # Removes the symbolic links 
-	done
-	#}
+	#done
+}
 
 #############################
 ## ANALYSIS BY POPULATIONS ##
 #############################
+
+if [ "$POP" == "FALSE" ]; then 	
+	genome_analysis
+elif [ "$POP" == "5" ]; then
+	# Super-populations (5) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
+	superpops=$(cd $gpdat/Others && cut -f3 PopulationIndividualsList.panel | sort -u | grep -v "super_pop" | tr '\n' ' ')
+	for spop in $superpops; do
+		genome_analysis $spop
+	done
+elif [ "$POP" == "26" ]; then
+	# The 1000 GP populations (26)) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
+	allpops=$(cd $gpdat/Others && cut -f2 PopulationIndividualsList.panel | sort -u | grep -v "pop" | tr '\n' ' ')
+	for npop in $allpops; do
+		genome_analysis $npop
+	done	
+else
+	genome_analysis $POP
+fi
 
 END=$(date +%s)
 DIFF=$(( $END - $START ))
