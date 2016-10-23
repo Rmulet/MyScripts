@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gpfile <- "chr21_gp.vcf.gz" ; alnfile <- "chr21_aln.vcf.gz"; chrom <- "21" ; maskfile <- "20140520.chr21.pilot_mask.fasta.gz"
+# setwd("F:/Internship/2_GenomicsData/Final/GeneByGene")
+# gpfile <- "chr10_gp.vcf.gz" ; alnfile <- "chr10_aln.vcf.gz"; chrom <- "10" ; maskfile <- "20140520.chr10.pilot_mask.fasta.gz"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
 # are missing via vector.
@@ -35,8 +35,6 @@ if (args[1] == "-h" | args[1] == "--help") {
   cat("\nUsage: GFFtoFASTA.R [GP FILE] [ALN FILE] [MASKFILE]\n\n")
   quit()
 }
-
-nfields <- 87 # Number of columns: 7 for polymorphism + 5*16 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -121,12 +119,10 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
-
-  region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-  # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
-
-  # Verify that the region contains variants and has been loaded onto R.
-  if (is.null(region)||region==FALSE) { 
+  # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA don't need to be loaded.
+  region <- readVCF("merge2.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
+  
+  if (is.null(region)||region==FALSE) { # When no variants are detected
     newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
@@ -255,14 +251,14 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 ###################
 
 merge.vcf <- function(ini,end,filename) { # Indicate the directory if experimental bcftools is local (Andromeda)
-  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
-                          filename,chrom,ini,end,gpfile,alnfile)))
+ print(sprintf("bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+                          filename,chrom,ini,end,gpfile,alnfile))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
     system(sprintf("bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                    filename,chrom,ini,end,gpfile,alnfile))
   }
-  system(sprintf("tabix -p vcf %s",filename))
+  print(sprintf("tabix -p vcf %s",filename))
 }
 
 ## RETRIEVE ENTREZ GENES AND PREPARE DATA TABLE:
@@ -275,12 +271,13 @@ gendata$end <- gendata$end+500
 ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
+nfields <- 87 # Number of columns: 7 for polymorphism + 5*16 for selection
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
 colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
 ## PREANALYSIS: GFF AND MASK:
 
-load(sprintf("gffseq_chr%s.RData",chrom)) # Annotation data
+load(sprintf("gffseq_chr%s.RData",chrom))
 
 library("Biostrings")
 maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
@@ -292,9 +289,10 @@ cat("Maskfile loaded\n")
 ## GENE BY GENE ANALYSIS:
 
 init <- Sys.time()
-for (i in 1:20) {
+for (i in 1:10) {
+  i=261
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d: %d - %d",i,ini,end))
+  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
@@ -308,8 +306,7 @@ for (i in 1:20) {
   tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos,gffseq)
   # print(sort(sapply(ls(),function(x){object.size(get(x))})))
   if(end-ini > 500000) {gc(reset=T)}
-  file.remove(filename)
-  file.remove(paste(filename,".tbi",sep=''))
+  file.remove(c(filename,paste(filename,".tbi",sep='')))
 }
 Sys.time()-init
 
@@ -319,7 +316,7 @@ Sys.time()-init
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
 db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
-mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
+mkt.names <- c("Psel","Pneu","Dsel","Dneu","m.neu","m.sel","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
 site.class <- c("fold0","intron","UTR5","UTR3","inter")
 
 for (class in site.class) {
