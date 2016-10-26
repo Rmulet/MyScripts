@@ -126,7 +126,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
 
   # Verify that the region contains variants and has been loaded onto R.
-  if (is.null(region)||region==FALSE) { 
+  if (is.null(region)||is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
     newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }

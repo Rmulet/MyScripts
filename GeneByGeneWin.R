@@ -120,9 +120,10 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA don't need to be loaded.
-  region <- readVCF("merge2.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
+  region <- readVCF("a.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   
-  if (is.null(region)||region==FALSE) { # When no variants are detected
+  # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
+  if (is.null(region)||is.logical(region)) { #
     newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
@@ -290,7 +291,7 @@ cat("Maskfile loaded\n")
 
 init <- Sys.time()
 for (i in 1:10) {
-  i=261
+  i=260
   ini <- gendata$start[i]; end <- gendata$end[i]
   print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]

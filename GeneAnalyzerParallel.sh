@@ -38,9 +38,10 @@ fi
 
 ## ARGUMENT PARSING ##
 
-MASK="pilot"
-POP="FALSE"
-DL="FALSE"
+export MASK="pilot"
+export POP="FALSE"
+export DL="FALSE"
+export ALL=`seq 1 22`
 
 while [[ $# > 0 ]]
 do
@@ -61,7 +62,12 @@ do
 		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
 		else echo -e "Population $POP will be analysed"; fi
 		shift 2
-		;;		
+		;;			
+		-chr|--chromosome)
+        export CHR="$2" # $1 has the name, $2 the value
+        echo -e "Only chromosome $CHR will be analysed"
+        shift 2
+        ;;
 		*) # No more options
 	    ;;
 	esac
@@ -71,15 +77,15 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-WORKING="$HOME/Documents/2_GenomicsData" # MODIFY THIS VARIABLE TO EXECUTE IN A DIFFERENT DIRECTORY
+export WORKING="$HOME/Documents/2_GenomicsData" # MODIFY THIS VARIABLE TO EXECUTE IN A DIFFERENT DIRECTORY
 
-gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
-gpdat="$WORKING/1000GP" # No files required 
-alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
-alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+export gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
+export gpdat="$WORKING/1000GP" # No files required 
+export alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
+export alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
+export finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
 
-maskdir="$gpdat/Masks/FASTA"
+export maskdir="$gpdat/Masks/FASTA"
 
 ## DOWNLOAD FILES [OPTIONAL]
 if [ "$DL" == "TRUE" ]; then
@@ -105,6 +111,11 @@ START=$(date +%s)
 
 genome_analysis() {
 	i=$1 # Argument passed to the function
+    i=$1 # Argument passed to the function
+    mkdir chr$i
+    cp 'GenesTable.RData' ./chr$i
+    ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i
+		
 	# POLYMORPHISM #
 	echo -e "Processing polymorphism data: chr$i" 
 	gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
