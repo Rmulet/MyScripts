@@ -33,8 +33,7 @@ if (args[1] == "-h" | args[1] == "--help") {
   quit()
 }
 
-nfields <- 91 # 7 for polymorphism + 6*14 for selection
-options(bigmemory.allow.dimnames=TRUE)
+nfields <- 87 # 7 for polymorphism + 6*14 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -58,7 +57,7 @@ Theta <- function(S,m,n) { # S=Segregating sites; m=total sites; n=number of sam
 
 ## MKT CALCULATION ##
 
-mkt.extended <- function (sel=0,neu=4) {
+mkt.extended <- function (sel=0,neu=4,gffseq) {
   
   # Divtotal, poly.sites and bial.class are in Global to pass them
   
@@ -103,15 +102,16 @@ mkt.extended <- function (sel=0,neu=4) {
   # of each class. Doing that would require modifying the 'set.synnonsyn2' function
   # to obtain all codons and check fold in every position (0,1,2)
   
-  m.neu <- sum(bial.class == neu,na.rm=T)
-  m.sel <- sum(bial.class == sel,na.rm=T)
-  
+  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
+  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
+  if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))}
+
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
   b <- (Psel.weak/Pneu)*(m.neu/m.sel)
   y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
   d <- 1 - (f+b)
   
-  return(c(Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
+  return(c(Psel,Pneu,Dsel,Dneu,m.sel,m.neu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
 }
 
 #################################
@@ -119,13 +119,13 @@ mkt.extended <- function (sel=0,neu=4) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos) {
+
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
 
   # Verify that the region contains variants and has been loaded onto R.
-  if (is.null(region)|is.logical(region)) { # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
-    print("No variants were identified in this region")
-    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows 
+  if (is.null(region)||is.logical(region)) { # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
+    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
 
@@ -148,7 +148,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
   bial <- bial[,ac.bial,drop=F] # Biallelic matrix of accessible variants
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
   wsize <- end-ini+1 # GFF coordinates, 1-based
@@ -232,19 +232,17 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
   
-  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4) # sel = 0-fold; neu= 4-fold
-  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4) # sel = exon; neu= 4-fold
-  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4) # sel = 5-UTR; neu= 4-fold
-  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4) # sel = 3-UTR; neu= 4-fold
-  bial.class[bial.class == 3] <- 5 # To combine all UTR
-  mkt.UTR.4fold <-  mkt.extended(sel=5,neu=4) # sel = exon; neu= 4-fold
+  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq) # sel = 0-fold; neu= 4-fold
+  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq) # sel = exon; neu= 4-fold
+  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq) # sel = 5-UTR; neu= 4-fold
+  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4,gffseq) # sel = 3-UTR; neu= 4-fold
   bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
-  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4) # sel = exon; neu= 4-fold
+  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4,gffseq) # sel = exon; neu= 4-fold
   
   cat("MKT performed. Data will be stored in a new row\n")
   
   ## ADD NEW ROW ##
-  newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.UTR.4fold,mkt.inter.4fold)
+  newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.inter.4fold)
   memory.profile()
   return(newrow)  
 }
@@ -253,15 +251,15 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
 ## GENE ANALYSIS ##
 ###################
 
-merge.vcf <- function(ini,end,filename) {
-  t <- try(system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
-                          filename,chrom,ini,end,gpfile,alnfile)))
+merge.vcf <- function(ini,end) {
+  t <- try(system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                          chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
-    system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
-                   filename,chrom,ini,end,gpfile,alnfile))
+    system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                   chrom,ini,end,gpfile,alnfile))
   }
-  system(sprintf("tabix -p vcf %s",filename))
+  system("tabix -p vcf merge_gene.vcf.gz")
 }
 
 ## RETRIEVE ENTREZ GENES AND PREPARE DATA TABLE:
@@ -274,7 +272,9 @@ gendata$end <- gendata$end+500 # Downstream(+strand)
 ngenes <- nrow(gendata)
 
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
-colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
+colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","msel","mneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),5))
+
+filename <- "merge_gene.vcf.gz"
 
 ## PREANALYSIS: GFF AND MASK:
 
@@ -282,7 +282,7 @@ load(sprintf("gffseq_chr%s.RData",chrom))
 
 
 library("Biostrings")
-maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
+maskfasta <- readBStringSet(maskfile) # Reading files in gz format is not supported in the Andromeda version
 cat("Maskfile loaded\n")
 
 # Note that the coordinates of the MASK are in BED format and therefore 0-based, whereas the GFF with
@@ -296,19 +296,19 @@ for (i in 1:ngenes) {
   print(sprintf("Gene number %d: %d - %d",i,ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
+  print(mask.local)
+  print(pass)
+  print(c(ini,end,chrom))
   if (sum(pass) == 0) {
     gendata$missing[i] <- 100
     tabsum[i,] <- rep(NA,nfields) 
     next}
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
-  filename <- sprintf("merge_gene%s.vcf.gz",gendata$name[i])
-  merge.vcf(ini,end,filename)
+  merge.vcf(ini,end)
   tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos)
   # print(sort(sapply(ls(),function(x){object.size(get(x))})))
   if(end-ini > 500000) {gc(reset=T)}
-  file.remove(filename)
-  file.remove(paste(filename,".tbi",sep=''))
 }
 Sys.time()-init
 
@@ -317,9 +317,9 @@ Sys.time()-init
 ###################
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
-db.names <- c("S","Pi","DAF","DivsOites","D","K","Unknown")
-mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
-site.class <- c("fold0","intron","UTR5","UTR3","UTR","inter")
+db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
+mkt.names <- c("Psel","Pneu","Dsel","Dneu","msel","mneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
+site.class <- c("fold0","intron","UTR5","UTR3","inter")
 
 for (class in site.class) {
   db.names <- c(db.names,unname(sapply(mkt.names,function(x){paste(c(x,"_",class),collapse="")})))

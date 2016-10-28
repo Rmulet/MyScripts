@@ -4,7 +4,7 @@
 
 # IMPORTANT: This pipeline assumes the usage of a GFF file with UCSC annotation. Since UCSC data are not provided in this format
 # by default, the Perl script UCSC_table2GFF3 is used. Alternatively, it could be downloaded and transformed with gtf2gff3.pl
-# The same proces
+# The
 
 # Add DOWNLOAD and MASK option
 
@@ -66,24 +66,38 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-gpraw="/home/roger/Documents/2_GenomicsData/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
-gpdat="/home/roger/Documents/2_GenomicsData/1000GP" # No files required 
-alnraw="/home/roger/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
-alndat="/home/roger/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="/home/roger/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+gpraw="$HOME/Documents/2_GenomicsData/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
+gpdat="$HOME/Documents/2_GenomicsData/1000GP" # No files required 
+alnraw="$HOME/Documents/2_GenomicsData/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
+alndat="$HOME/Documents/2_GenomicsData/Alns" # Contains FASTA files (FA.GZ/FA)
+finaldir="$HOME/Documents/2_GenomicsData/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
 
 maskdir=$gpdat/Masks/FASTA
 
-downloader() {
+## DOWNLOAD FILES [OPTIONAL]
+if [ "$DL" == "TRUE" ]; then
+	echo "The files required for the analysis will be downloaded"	
+	cd $gpraw
+	wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+	cd $gpdat/Others
+	wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
+	cd $alnraw
+	wget -e robots=off -nc -nd -r -l1 -np -A chr??.mfa.gz,chr?.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
+	wget -e robots=off -nc -nd -r -l1 -np -A chr??.fa.gz,chr?.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/# Sequence - UCSC
+	cd $gpdata/Masks
+	wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
+fi
 
-wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
+###################
+## DATA ANALYSIS ##
+###################
 
-}
-
+touch "Warnings.dat"
+START=$(date +%s)
 
 #genome_analysis() {
-	for i in `seq 1 22` X Y; do
-		i=21
+	#for i in `seq 1 22`; do # Only autosomal chromosomes
+		i=4
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -121,29 +135,35 @@ wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/rele
 			gunzip chr$i.fa.gz # Uncompress the FASTA sequence
 			echo -e "Converting .MFA alignment to VCF for chr$i"
 			MFAtoVCF.py -s chr$i.fa -q Chimp -c $i $alnstart # Convert MFA to VCF. VCF.GZ file is automatically tabixed.
+			rm $alnstart
 		fi
 
-		# PREANALYSIS (GFF to FASTA)	
+		# PREANALYSIS (GFF to FASTA) #	
 		cd $finaldir
-		if [ ! -e "hg19_knownGene.gff3.gz" ]; then # If no annotation is available, then use this script to download and convert to GFF
-		ucsc_table2gff3.pl --ftp known --db hg19 --gz
-		fi	
-		echo -e "Extracting the annotation file of chr$i"
-		zcat hg19_knownGene.gff3.gz | grep -P "^chr$i\t" | sed "s/^chr$i/$i/" > chr$i.gff  # Match the ID format of GFF to the VCF files
-		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome		
-		echo -e "Generating the pseudo-FASTA file"
-		GFFtoFASTA8.R chr$i.gff chr$i.fa # Convert FASTA to GFF
-		
+		echo -e "Extracting the annotation file to a sequence format"
+		if [ ! -e "gffseq_chr$i.RData" ]; then
+			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
+			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+		fi
+
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
-		maskfile=$(cd $maskdir && ls -d *chr$i.*)	
+		maskfile=$(cd $maskdir && ls -d *chr$i.*)
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		ln -s $maskdir/$maskfile # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		echo $gpfile
-		GeneByGene7.R $gpfile $alnfile $maskfile $i
+		echo $gpfile $alnfile $maskfile $i
+		GeneByGene8.R $gpfile $alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"
-# done
+		rm chr$i*.vcf* # Removes the symbolic links 
+done
 	#}
 
+#############################
+## ANALYSIS BY POPULATIONS ##
+#############################
+
+END=$(date +%s)
+DIFF=$(( $END - $START ))
+echo "Runtime: $DIFF seconds"

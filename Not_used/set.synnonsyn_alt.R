@@ -1,30 +1,15 @@
 # ref.chr = "chr22.fa"; xyz = 1; object = region; save.codons = FALSE; four.fold = TRUE
 
+# IMPORTANT: This altered version of 'set.synonsyn' is not necessary IF VCFAnalysis is used
+# in combination with GFFtoFASTA, as it already contains the 4-fold fold positions. The last
+# version which used 'set.synnonsyn_alt' was VCFAnalysisExperimental2.
+
 setGeneric("set.synnonsyn2", function(object,ref.chr=FALSE,save.codons=FALSE,four.fold=TRUE) standardGeneric("set.synnonsyn2"))
  setMethod("set.synnonsyn2", "GENOME",
  function(object,ref.chr,save.codons,four.fold){
 
-codonise64 <- function(s){ # Function to identify the codon number (by BPfeifer). Should be integrated in PopGenome package.
- 
- m<-dim(s)[2]
- n<-dim(s)[1]
- 
- if((m%%3)>0){
-   stop("length of coding sequence cannot divide by 3!") 
- }
- 
- t <- matrix(,n,m/3)
- p <- seq(1,m,3)
- q <- 1:(m/3)
- 
- s[s>=5] <- 100 # if gaps or unknown in the codon
- 
- t[,q] <- (s[ ,p]-1)*16 + (s[ ,p+1]-1)*4 + (s[ ,p+2]-1)+1
- t[t>64]<-65
- 
- return(t)
-}   
-
+# PopGenome:::codonise64() to call codonise. Remember it takes a one-row matrix as argument.
+   
 T <- codontable()
 trips <- T$Triplets
 code <- T$Protein[1,]   
@@ -39,14 +24,14 @@ check_fold <- function(triplet,pos) {
    stop("Arguments are missing")
  }
  # EVALUATE INPUT VARIABLES:
- comb <- which(apply(trips,1,function(x){identical(x[1:3],triplet)}))
+ comb <- c(PopGenome:::codonise64(triplet))
  if (comb == 65) {return(fold=NA)} # For the 555 case
  aa <- code[comb] # Original aminoacid of the triplet
  # EVALUATE DEGENERACY:
  fold <- 0
  for (i in 1:4) {
    triplet[pos+1] <- i # Pos in cod.pos is 0/1/2, but indices in R start at 1
-   comb <- which(apply(trips,1,function(x){identical(x[1:3],triplet)}))
+   comb <- c(PopGenome:::codonise64(triplet))
    altaa <- code[comb]
    # cat(c(triplet,",",altaa,"\n"))
    if (altaa == aa) {fold <- fold+1}
@@ -55,7 +40,7 @@ check_fold <- function(triplet,pos) {
 }
 
 # Associative array: fold for each possible position
-a <- t(apply(trips,1,function(x){sapply(0:2,function(y){check_fold(x,y)})}))
+# assocmat <- t(apply(trips,1,function(x){sapply(0:2,function(y){check_fold(x,y)})}))
 
 if(ref.chr[1]==FALSE){
 stop("Please verify the reference sequence")
@@ -68,8 +53,8 @@ stop("No GFF file was read in !")
 
 for (xyz in 1:length(ref.chr)){
 # erstmal nur fuer ein Chunk
-
-Coding.matrix            <- object@region.data@Coding.matrix2[[xyz]][,] # weil ff object, 2 because (fitting GFF)
+# Coding matrix are those SNPs (number) in each region???!
+Coding.matrix            <- object@region.data@Coding.matrix2[[xyz]][,] # Corresponding GFF IDs for each variant
 biallelic.sites2         <- object@region.data@biallelic.sites2[[xyz]]  # Number of variant in the VCF file. E.g. 2 - variant n 2.
 biallelic.sites          <- object@region.data@biallelic.sites[[xyz]] # Genomic coordinates of each variant
 START                    <- object@region.data@reading.frame[[xyz]][,] #  Coords of coding region and reading frame
@@ -82,6 +67,8 @@ warning("No coding SNPs in this region !")
 print(object@region.names[xyz])
 next
 }
+
+## OBTAIN START AND END OF CODING REGIONS ##
 
 # The START position is altered depending whether coding regions are reverse
 
@@ -113,12 +100,18 @@ rev.strand.shift         <- START[REV,3] # 3rd column is the shift (e.g. 2) from
 rev.strand.shift         <- 0
 }
 
+END                      <- START[,2] # Ending position of the coding regions
 START                    <- START[,1] # Starting positions of the coding regions
+END[!REV]                <- END[!REV] + as.numeric(gsub(3,0,3-pos.strand.shift)) # Subtract from reverse when ORF is not 0
 START[!REV]              <- START[!REV] + pos.strand.shift # We add the shift to the START coordinates in non-reverse regions
 
+# We modify the START and END regions 
 START[REV]               <- object@region.data@reading.frame[[xyz]][REV,2] - rev.strand.shift # We take the END coordinates for reverse regions and subtract shift
+END[REV]                 <- object@region.data@reading.frame[[xyz]][REV,1] - as.numeric(gsub(3,0,3-rev.strand.shift)) 
 
 Coding.matrix            <- Coding.matrix # Relative start/end of coding regions
+
+## IDENTIFY THE VARIANTS IN EACH CODING REGION ##
 
 # define an evironment
 synGLOBAL <- new.env() 
@@ -142,7 +135,7 @@ erg  <- apply(Coding.matrix,1,function(xx){ # List containing indices of coding 
  bial.pos    <- match(erg,biallelic.sites2) #.Call("my_match_C",erg,biallelic.sites2)
  bial.pos[bial.pos==-1] <- NaN
  #return(bial.pos)
- bial.pos    <- biallelic.sites[bial.pos]
+ bial.pos    <- biallelic.sites[bial.pos] # Positions of the coding biallelic variants
  
 # RogerNote: Isn't it possible to just do? 
 # bial.pos <- biallelic.sites[CodingSNPS]
@@ -151,9 +144,9 @@ erg  <- apply(Coding.matrix,1,function(xx){ # List containing indices of coding 
 #print(bial.pos)
 #print(biallelic.sites2)
 
-# Create Start Vector
+# Create Start Vector --> One start for each SNP?
  synGLOBAL$count <- 1
- vec <- sapply(START,function(x){
+ vec <- sapply(START,function(x){ 
       gg              <- rep(x,synGLOBAL$SIZE[synGLOBAL$count])       
       synGLOBAL$count <- synGLOBAL$count + 1
 
@@ -169,9 +162,8 @@ erg  <- apply(Coding.matrix,1,function(xx){ # List containing indices of coding 
  return(gg)
  })
 
-
- START.vec   <- unlist(vec)
- REV.vec     <- unlist(vec_rev) #---
+START.vec   <- unlist(vec)
+REV.vec     <- unlist(vec_rev) #---
 
 #print(length(REV.vec))
 #print(length(START.vec))
@@ -179,9 +171,9 @@ erg  <- apply(Coding.matrix,1,function(xx){ # List containing indices of coding 
 
  # DEFINE CODONS #
  
- # START contains the starting position of the coding region, so any other
- # position can be referenced to it. With modulo we find the remainder of the
- # quotient, which indicates the position in a triplet: 0 is first, 1 is second...
+ # START contains the starting position of the coding region for each SNP, so that they 
+ # can be referenced to it. With modulo we find the remainder of the quotient, which 
+ # indicates the position in a triplet: 0 is first, 1 is second...
  
  cod.pos <- (bial.pos - START.vec)%%3 
  # in case of reverse strand 
@@ -258,7 +250,7 @@ Subst         <- object@region.data@biallelic.substitutions[[xyz]] # All substit
 minor         <- Subst[1,CodingSNPS]
 major         <- Subst[2,CodingSNPS]
 
-komplement <- c(4,3,2,1,5) # For regions in the reverse strand: opposite of T=1,C=2,G=3,A=4
+komplement <- c(4,3,2,1,5) # For regions in the reverse strand: opposite of T=1,C=2,G=3,A=4 (vectorisation)
 
 ffold <- rep(NA,dim(Nuc.codons)[1]) # To check whether it is 4fold degenerate
 
@@ -293,11 +285,10 @@ for(xx in 1: dim(Nuc.codons)[1]){ # For each codon with variants
 #print(REF)
 #print(ALT)
 
-
 # Coding Codons ...
 
-ALT <- codonise64(ALT)
-REF <- codonise64(REF)
+ALT <- PopGenome:::codonise64(ALT)
+REF <- PopGenome:::codonise64(REF)
 
 if(save.codons){
 saveALTREF <- cbind(REF,ALT)
@@ -316,9 +307,9 @@ erg <- apply(CHECK,1,function(x){return(length(unique(x)))}) # Length of unique 
 erg[erg==2] <- 0 #nonsyn
 # Label the 4fold degenerate sites instead of synonymous:
 if (four.fold){
-  erg[erg==1 & ffold] <- 4 # Four-fold sites as 4
-  erg[erg==1 & !ffold] <- 1 # Synonym sites as 1
-  
+  erg[erg==1 & ffold == 4] <- 4 # Four-fold sites as 4
+  erg[erg==1 & ffold != 4] <- 1 # Synonym sites as 1
+  erg[erg!=1 & ffold != 4] <- 0 # Four-fold sites as 4
 } else {
   erg[erg==1] <- 1 #syn
   }

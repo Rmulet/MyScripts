@@ -13,7 +13,7 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
-
+suppressMessages(library(TxDb.Hsapiens.UCSC.hg19.knownGene))
 # zz <- file("Warnings.dat","w")
 # sink("Warnings.dat",append=TRUE)
 
@@ -34,7 +34,6 @@ if (args[1] == "-h" | args[1] == "--help") {
 }
 
 nfields <- 91 # 7 for polymorphism + 6*14 for selection
-options(bigmemory.allow.dimnames=TRUE)
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -120,14 +119,8 @@ mkt.extended <- function (sel=0,neu=4) {
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
+  # region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=FALSE) 
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
-
-  # Verify that the region contains variants and has been loaded onto R.
-  if (is.null(region)|is.logical(region)) { # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
-    print("No variants were identified in this region")
-    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows 
-    return(newrow)
-  }
 
   ## DEFINE POPULATION/OUTGROUP ##
   
@@ -186,6 +179,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
     DAF <- hist(mafan$DAF,seq(0.0,1,0.05),plot=F)$counts
     DAF <- paste(DAF,collapse = ";")
   } else {DAF <- NA}
+  Sys.sleep(3)
   
   print(sort(sapply(ls(),function(x){object.size(get(x))})))
   
@@ -194,9 +188,9 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   # DETERMINE M (EXCLUDING MISSING AND POLYALLELIC)
   # Total number of sites: 1) Remove NA in humans 2) Remove polyallelic sites
   if (!length(region@region.data@polyallelic.sites) == 0) { # Make sure list exists
-    multisites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
-     } else {multisites <- 0} # If not available, we assume 0
-  m <- wsize-sum(misshuman,na.rm=T)-multisites
+    polysites <- length(region@region.data@polyallelic.sites[[1]]) # Positions of all polyalleles
+     } else {polysites <- 0} # If not available, we assume 0
+  m <- wsize-sum(misshuman,na.rm=T)-polysites
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
   if (is.null(bial[1:n,poly.sites,drop=F])||dim(bial[1:n,poly.sites,drop=F])[2]==0) {
     S <- 0
@@ -253,47 +247,51 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
 ## GENE ANALYSIS ##
 ###################
 
-merge.vcf <- function(ini,end,filename) {
-  t <- try(system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
-                          filename,chrom,ini,end,gpfile,alnfile)))
-  if ("try-error" %in% class(t)) {
-    gc(reset=T)
-    system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
-                   filename,chrom,ini,end,gpfile,alnfile))
-  }
-  system(sprintf("tabix -p vcf %s",filename))
-}
-
-## RETRIEVE ENTREZ GENES AND PREPARE DATA TABLE:
-
-load("GenesTable.RData")
-gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
-gendata <- gendata[order(gendata$start),]
-gendata$start <- gendata$start-500 # Upstream(+strand)
-gendata$end <- gendata$end+500 # Downstream(+strand)
-ngenes <- nrow(gendata)
-
-tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
-colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
-
-## PREANALYSIS: GFF AND MASK:
+## RETRIEVE ENTREZ GENES FROM TXDB:
 
 load(sprintf("gffseq_chr%s.RData",chrom))
+cat("GFF sequence loaded\n")
+txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
+seqlevels(txdb) <- sprintf("chr%s",chrom)
+grgenes <- genes(txdb)
+start(grgenes) <- start(grgenes)-500 # Upstream(-strand)
+end(grgenes) <- end(grgenes)+500 # Downstream(+strand)
+ngenes <- length(grgenes)
 
+## CREATE A GENE SPECIFIC MERGE:
 
-library("Biostrings")
-maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
-cat("Maskfile loaded\n")
+filename <- "merge_gene.vcf.gz"
+
+merge.vcf <- function(ini,end) {
+  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                 chrom,ini,end,gpfile,alnfile)))
+  if ("try-error" %in% class(t)) {
+    gc(reset=T)
+    system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                   chrom,ini,end,gpfile,alnfile))
+  }
+  system("tabix -p vcf merge_gene.vcf.gz")
+}
 
 # Note that the coordinates of the MASK are in BED format and therefore 0-based, whereas the GFF with
 # the genes and the GRanges objects are 1-based. To convert from 0 to 1-based, START+1:END.
 
-## GENE BY GENE ANALYSIS:
+# TABLE CONTAINING THE DATA:
+tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
+gendata <- data.frame(name=grgenes$"gene_id",chr=rep(chrom,ngenes),start=start(grgenes),end=end(grgenes),missing=numeric(ngenes))
+# colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Pns","Ps","Dns","Ds")
+# Psel,Pneu,Dsel,Dneu,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d
+colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
+# filename <- "chr22_merge.vcf.gz"
+## USING THE FASTA SEQUENCE:
+library("Biostrings")
+maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
+cat("Maskfile loaded\n")
 init <- Sys.time()
-for (i in 1:ngenes) {
-  ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d: %d - %d",i,ini,end))
+for(i in 1:20) {
+  print(sprintf("Gene number: %d",i))
+  ini <- start(grgenes[i]); end <- end(grgenes[i])
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
@@ -302,13 +300,10 @@ for (i in 1:ngenes) {
     next}
   ac.pos <- (ini:end)[pass] # Vector with gene positions that are accessible
   gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not                                                                                                                                                                                                                   pass the filter
-  filename <- sprintf("merge_gene%s.vcf.gz",gendata$name[i])
-  merge.vcf(ini,end,filename)
+  merge.vcf(ini,end)
   tabsum[i,] <- popanalysis(filename,ini,end,chrom,ac.pos)
   # print(sort(sapply(ls(),function(x){object.size(get(x))})))
   if(end-ini > 500000) {gc(reset=T)}
-  file.remove(filename)
-  file.remove(paste(filename,".tbi",sep=''))
 }
 Sys.time()-init
 
@@ -317,7 +312,7 @@ Sys.time()-init
 ###################
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
-db.names <- c("S","Pi","DAF","DivsOites","D","K","Unknown")
+db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
 mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
 site.class <- c("fold0","intron","UTR5","UTR3","UTR","inter")
 
@@ -343,7 +338,25 @@ colnames(tabsum) <- db.names
 export <- cbind(gendata,tabsum)
 export.name <- "GenesDB"
 
-save(export,file=sprintf("GeneData_chr%s.RData",chrom))
+suppressMessages(library(DBI))
+suppressMessages(library(RMySQL))
+
+con <- dbConnect(RMySQL::MySQL(),
+                 user="root", password="RM333",
+                 dbname="PEGH", host="localhost")
+first <- !dbExistsTable(con,export.name)
+
+t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
+
+if ("try-error" %in% class(t)) {
+  save(export,file=sprintf("failedexport_chr%s.RData",chrom))
+}
 write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
 
+if (first == TRUE) {# Remove if we want to concatenate various chromosomes
+  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
+  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (name);",export.name))
+}
+
+on.exit(dbDisconnect(con))
 closeAllConnections()
