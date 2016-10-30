@@ -291,7 +291,7 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d: %d - %d",i,ini,end))
+  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
