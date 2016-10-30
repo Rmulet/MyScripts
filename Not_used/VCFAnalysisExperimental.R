@@ -1,7 +1,8 @@
 #!/usr/bin/Rscript
 
-#setwd("~/Documents/2_GenomicsData/TestPopGenome")
-#filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"
+#setwd("~/Documents/2_GenomicsData/Final")
+# filename <- "merge.3.vcf.gz"
+#filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603-1; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"; window = 7
 
 # Region Analysis v0.8 - Imports the VCF file containing human and chimpanzee data and calculates
 # metrics of polymorphism and divergence. The output is sent to a MySQL database.
@@ -13,36 +14,13 @@
 # are created. Generalization to multiple chromosomes is available.
 # UPDATE4: DAF instead of SFS. Dots to underscores for MySQL. DB name changeable.
 # UPDATE5: MKT re-added, optional. It requires a GFF and a FASTA file.
-# UPDATE6: 1) Improved DAF with 1000 AA 2) Improved MKT with 4fould and extended MKT.
+# UPDATE6: 1) Improved DAF with 1000 AA 2) Improved MKT with 4fold and extended MKT.
+# UPDATE7: GFFtoFASTA has replaced 'set.synnonsyn_alt' as the method of choic for MKT.
+# UPDATE8: Change in the coordinate system according to the mask in pseudo-BED format.
 
-library(parallel)
-no.cores <- detectCores() -1
-c1 <- makeCluster(no.cores)
-
-LocationOfThisScript = function() # Function LocationOfThisScript returns the location of this .R script
-{
-  this.file = NULL
-  # This file may be 'sourced'
-  for (i in -(1:sys.nframe())) {
-    if (identical(sys.function(i), base::source)) this.file = (normalizePath(sys.frame(i)$ofile))
-  }
-  
-  if (!is.null(this.file)) return(dirname(this.file))
-  
-  # But it may also be called from the command line
-  cmd.args <- commandArgs(trailingOnly = FALSE)
-  cmd.args.trailing <- commandArgs(trailingOnly = TRUE)
-  cmd.args <- cmd.args[seq.int(from=1, length.out=length(cmd.args) - length(cmd.args.trailing))]
-  res <- gsub("^(?:--file=(.*)|.*)$", "\\1", cmd.args)
-  
-  # If multiple --file arguments are given, R uses the last one
-  res = tail(res[res != ""], 1)
-  if (0 < length(res)) return(dirname(res))
-  
-  # Both are not the case. Maybe we are in an R GUI?
-  return(NULL)
-}
-current.dir <- LocationOfThisScript()
+#library(parallel) # Parallelization does not seem to work
+#no.cores <- detectCores() -1
+#c1 <- makeCluster(no.cores)
 
 #############################
 ## IMPORT AND PREPARE DATA ##
@@ -57,7 +35,9 @@ if (suppressMessages(!require("PopGenome"))) { # Can be removed
 args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
 filename <- args[1] # Name of the file specified after the script
 chrom <- args[2] # Chromosome number
-ini <- as.numeric(args[3])-1; end <- args[4] # Window range. -1 from ini to include position 1.
+ini <- as.numeric(args[3])-1; end <- args[4]-1 # Although the mask file is supposed to be in BED format,
+# comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not 
+# included. START matches the position in the FASTA, but PopGenome tends to add 1; therefore, we remove it
 wsize <- as.numeric(args[5]) # Window size
 db <- args[6] # Name of the database [Genomics]
 MK <- args[7] # Calculate MKT
@@ -73,17 +53,11 @@ init <- Sys.time()
 
 if (MK==TRUE) {
   region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE,gffpath=sprintf("chr%s.gff",chrom))
-  # source(paste(current.dir,"set.synnonsyn_alt.R",sep="/"))
-  source(paste("/home/roger/Documents/Scripts","set.synnonsyn_alt.R",sep="/")) # Only testing!!!
-  # We use 'set.synnonsyn2' to identify four-fold degenerate
-  region <- set.synnonsyn2(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=TRUE) 
+  region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=FALSE) 
   cat("MKT will be calculated \n")
 } else {
   region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
 }
-
-# Only runs on Linux, mcapply (used in parallelpackage) does not work on Windows
-# region <- readVCF(filename,numcols=5000,parallel=TRUE,tid=chrom,from=ini,to=end,include.unknown=TRUE)
 
 ## DEFINE POPULATION/OUTGROUP ##
 
@@ -107,12 +81,12 @@ windows <- unlist(strsplit(slide@region.names,":")) # Retrieves window labels wi
 windows <- t(sapply(strsplit(windows,"-"),as.numeric))
 colnames(windows) <- c("start","end")
 nwin <- nrow(windows)
-# winsites <- slide@region.data@biallelic.sites # Positions in each window
+allwinsites <- slide@region.data@biallelic.sites # Positions in each window
 allwindex <- slide@SLIDE.POS
 
-################
-## STATISTICS ##
-################
+#####################################
+## GLOBAL STATISTICS AND VARIABLES ##
+#####################################
 
 ## NEUTRALITY TESTS ##
 
@@ -126,13 +100,13 @@ n <- length(humans) # N = samples. Diploid, not divided by 2
 # bial <- get.biallelic.matrix(region,1) # Testing
 bialhuman <- get.biallelic.matrix(region,1) [1:n,,drop=F] #  Biallelic matrix, remove outgroup
 freqs <- colSums(bialhuman == 1)/nrow(bialhuman)
-freqs.df <- data.frame(POS=names(freqs),MAF=unname(freqs)) # Position and DAF of biallelic variants
+freqs.df <- data.frame(POS=names(freqs),MAF=unname(freqs)) # Position and MAF of biallelic variants
 
 # IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
 library(stringr)
-# temp <- system(sprintf('gunzip -c %s | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file  
-# gpimport <- read.table(textConnection(temp),sep="\t",stringsAsFactors = FALSE,header=TRUE)
-gpimport <- read.table("gpimport.txt",sep="\t",stringsAsFactors = FALSE,header=TRUE)
+temp <- system(sprintf('gunzip -c %s | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file  
+gpimport <- read.table(textConnection(temp),sep="\t",stringsAsFactors = FALSE,header=TRUE)
+# gpimport <- read.table("gpimport.txt",sep="\t",stringsAsFactors = FALSE,header=TRUE)
 gpances <- toupper(sapply(gpimport[,3],function(x){str_match(x,"AA=([:alpha:])\\|")[2]},USE.NAMES=FALSE)) # Capture the ancestral allele
 aarefs <- na.omit(cbind(gpimport[,1:2],ANC=gpances)) # Na.omit removes positions without known AA and divergent sites
 
@@ -146,7 +120,10 @@ mafan <- merge(freqs.df[,1,drop=F],mafan,all.x=TRUE) # Retain originals
 # Some sites do not have AA. In some cases because they are divergent, but others are polymorphic:
 # freqs.df[which(is.na(mafan$MAF))[!(which(is.na(mafan$MAF)) %in% which(freqs.df$MAF == 0)),]
 
-## CUSTOM FUNCTION FOR NUCLEOTIDE DIVERSITY AND DIVERGENCE ##
+######################################
+## CUSTOM FUNCTION WINDOW BY WINDOW ##
+######################################
+
 measures <- function(object) {
   n <- length(humans) # N = samples. Diploid, not divided by 2
   total <- length(individuals) # Total number of samples (including outgroup)
@@ -165,7 +142,7 @@ measures <- function(object) {
 
   # LOOP TO READ THE WINDOWS IN SLIDE VARIABLE:
   for (window in 1:nrow(windows)) {
-    # DETERMINE SEGREGATING SITES (EXCLUDING OUTGROUP)
+    # EXTRACT SEGREGATING SITES (EXCLUDING OUTGROUP)
     bial <- get.biallelic.matrix(slide,window) # Biallelic matrix of the window
     if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
       newrow <- rep(0,13) # Empty rows
@@ -213,12 +190,18 @@ measures <- function(object) {
     mout <- m - unknowns
     D <- round(divsites/mout,7) # Observed divergence: Proportion of sites with divergent nucleotides
     K <- round(-3/4*log(1-4/3*D),7) # Real divergence: Jukes and Cantor model
+    
+    ## NATURAL SELECTION REGIMES ##
+    
+    winsites <- allwinsites[[window]] # Biallelic sites in this window
+    bial.class <- gffseq[winsites] # GFF feature in each site
+    syn <- slide@region.data@synonymous[[window]] # Contains syn and non-syn positions
+    syn[bial.class == 4] <- 4
 
-    ## MKT CALCULATION ##
+    ## MKT CALCULATION
     
     # STANDARD: Same result as MKT function if done with all syn.
 
-    syn <- slide@region.data@synonymous[[window]] # Contains syn and non-syn positions
     Ps <- sum(polym[syn==4],na.rm=TRUE) # For all syn, >=1
     Pns <- sum(polym[syn==0],na.rm=TRUE)
     Ds <- sum(divtotal[syn==4],na.rm=TRUE)
@@ -226,6 +209,10 @@ measures <- function(object) {
     NI <- (Pns/Ps)/(Dns/Ds)
     alpha <- 1-NI
     DoS <- Dns/(Dns+Ds)-Pns/(Pns+Ps) # Direction of selection
+    contingency.std <- matrix(c(Pns,Ps,Dns,Ds),c(2,2))
+    test <- if(!is.na(sum(contingency.std))){
+      if(sum(contingency.std)>0){fisher.test(contingency.std)$p.value}
+    } else {NA}
     
     # ADAPTED:
     
@@ -234,7 +221,6 @@ measures <- function(object) {
     # Using DAF results in a loss of information, as it is not available for some
     # variants. For MAF, simply retrieve from freqs.df.
     
-    #winDAF <- mafan$DAF     #Testing for all region, REMOVE
     synDAF <- as.vector(na.omit(winDAF[syn==4 & polym==TRUE]))
     nsDAF <- as.vector(na.omit(winDAF[syn==0 & polym==TRUE]))
     
@@ -253,9 +239,19 @@ measures <- function(object) {
       if(sum(contingency)>0){fisher.test(contingency)$p.value}
     } else {NA}
       
+    # OTHER ESTIMATORS:
+    
     # To fully implement extended MKT, we need ms/mns, that is, the number of sites
     # of each class. Doing that would require modifying the 'set.synnonsyn2' function
     # to obtain all codons and check fold in every position (0,1,2)
+    
+    m.neu <- sum(bial.class == neu,na.rm=T)
+    m.sel <- sum(bial.class == sel,na.rm=T)
+    
+    f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
+    b <- (Psel.weak/Pneu)*(m.neu/m.sel)
+    y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
+    d <- 1 - (f+b)
 
     ## ADD NEW ROW ##
     newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,alpha.cor,test,Pns.neutral,Ps,Dns,Ds)
@@ -267,9 +263,10 @@ measures <- function(object) {
 
 ## INTEGRATION OF NEUTRALITY, DIVERSITY AND DIVERGENCE METRICS ## 
  
+# Results from neutrality stats module are divided by number of sites
 regiondata <- measures(slide)
 S2 <- slide@n.segregating.sites[,1] # Segretaging sites excluding unknowns
-Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) # 
+Tajima_D <- round(slide@Tajima.D[,1]/wsize,7) 
 FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
 if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,regiondata[,3:ncol(regiondata)])

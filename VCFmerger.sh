@@ -140,11 +140,16 @@ do
 
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
-	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT /dev/null # Avoid the message visualization!! 
+	echo merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
-	echo -e "Analysis with R complete. Data exported to the MySQL database."
-	rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
-
+	if [[ $? -ne 0 ]]; then
+	        echo 'Error: VCFAnalysis.R failed!'
+	        exit -1
+	else
+		echo -e "Analysis with R complete. Data saved and exported to the MySQL database."
+		rm merge.$k.vcf.gz merge.$k.vcf.gz.tbi # Removes the current merge file in order to free disk space
+	fi
 	((k++))
 done < "$bedfile"
 

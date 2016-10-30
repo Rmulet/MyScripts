@@ -32,7 +32,7 @@ args <- commandArgs(trailingOnly = TRUE) # Import arguments from command line
 filename <- args[1] # Name of the file specified after the script
 chrom <- args[2] # Chromosome number
 ini <- as.numeric(args[3])-1; end <- as.numeric(args[4])-1 # Although the mask file is supposed to be in BED format,
-# comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not
+# comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not 
 # included. START matches the position in the FASTA, but PopGenome tends to add 1; therefore, we remove it
 wsize <- as.numeric(args[5]) # Window size
 db <- args[6] # Name of the database [Genomics]
@@ -53,7 +53,6 @@ region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknow
 # Verify that the region contains variants and has been loaded onto R.
 if (is.null(region)||is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
   print("This region does not contain any variants")
-}
 
 load(sprintf("gffseq_chr%s.RData",chrom)) # Annotation data from GFFtoFASTA
 
@@ -81,6 +80,7 @@ colnames(windows) <- c("start","end")
 nwin <- nrow(windows)
 allwinsites <- slide@region.data@biallelic.sites # Positions in each window
 allwindex <- slide@SLIDE.POS
+
 
 #####################################
 ## GLOBAL STATISTICS AND VARIABLES ##
@@ -136,6 +136,7 @@ measures <- function(object) {
    return(round(pi,7))
    }
   # TABLE CONTAINING THE DATA:
+
   tabsum <- as.data.frame(matrix(numeric(nwin*15),ncol=15,nrow=nwin))
   colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Psel","Pneu","Dsel","Dneu","msel","mneu")
 
@@ -172,6 +173,7 @@ measures <- function(object) {
     ## SITE FREQUENCY SPECTRUM (SFS) DERIVED ALLELE FREQUENCY (DAF) ##
     # The 'winsites' variable contains the coordinates of the biallelic variants in each window.
     # By using this information, we can subset the DAF of the sites in this window contained in 'mafan'.
+    
     windex <- allwindex[[window]]
 
     if (is.numeric (mafan$DAF)) {
@@ -220,19 +222,19 @@ measures <- function(object) {
 
     # We use MAF for the adjustment because it is available for all positions, whereas some
     # do not have DAF due to the lack of AA. For DAF, please use winDAF.
-
+    
     neuMAF <- as.vector(na.omit(MAF[bial.class==4 & poly.sites==TRUE]))
     selMAF <- as.vector(na.omit(MAF[bial.class==0 & poly.sites==TRUE]))
-
+    
     Pneu.less5 <- sum(neuMAF<0.05) # P0 MAF less than 5%
-    Pneu.more5 <- sum(neuMAF>0.05) # P0 MAF more than 5%
-    Psel.less5 <- sum(selMAF<0.05) # Pi MAF less than 5%
+    Pneu.more5 <- sum(neuMAF>0.05) # P0 MAF more than 5% 
+    Psel.less5 <- sum(selMAF<0.05) # Pi MAF less than 5% 
     Psel.more5 <- sum(selMAF>0.05) # Pi MAF more than 5%
-
+    
     Psel.neutral.less5 <- Psel*(Pneu.less5/Pneu) # Proportion of neutral within the MAF < 5% class
     Psel.neutral <- Psel.neutral.less5 + Psel.more5 # For alpha
     Psel.weak <- Psel.less5 - Psel.neutral.less5
-
+    
     alpha.cor <- 1-(Psel.neutral/Pneu)*(Dneu/Dsel)
     contingency <- matrix(c(Psel.neutral,Pneu,Dsel,Dneu),c(2,2))
     test <- if(!is.na(sum(contingency))){
@@ -244,10 +246,10 @@ measures <- function(object) {
     # To fully implement extended MKT, we need ms/mns, that is, the number of sites
     # of each class. Doing that would require modifying the 'set.synnonsyn2' function
     # to obtain all codons and check fold in every position (0,1,2)
-
+    
     m.neu <- sum(bial.class == 4,na.rm=T) # neu=4-fold
     m.sel <- sum(bial.class == 0,na.rm=T) # sel=0-fold
-
+    
     ## ADD NEW ROW ##
     newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,alpha.cor,test,Psel.neutral,Pneu,Dsel,Dneu,m.sel,m.neu)
     print(newrow)
@@ -282,22 +284,22 @@ col.names=!file.exists(sprintf("WindowData_chr%s.tab",chrom))) # Column names wr
 
 if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
 
-        suppressMessages(library(DBI))
-        suppressMessages(library(RMySQL))
-
-        con <- dbConnect(RMySQL::MySQL(),
+	suppressMessages(library(DBI))
+	suppressMessages(library(RMySQL))
+	
+	con <- dbConnect(RMySQL::MySQL(),
         user="roger", password="RM333",
         dbname="PEGH", host="158.109.215.40")
 
-        first <- !dbExistsTable(con,db)
+	first <- !dbExistsTable(con,db)
 
-        dbWriteTable(con,value=export,name=db,row.names=F,append=T)
+	dbWriteTable(con,value=export,name=db,row.names=F,append=T)
 
-        if (first == TRUE) # Remove if we want to concatenate various chromosomes
-        dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
-        dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
+	if (first == TRUE) # Remove if we want to concatenate various chromosomes
+	dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
+	dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
 
-        on.exit(dbDisconnect(con))
+	on.exit(dbDisconnect(con))
 }
 
 print(Sys.time() - start.time)

@@ -3,17 +3,18 @@
 # GENOME ANALYZER 0.2 - Calls the VCFmerger.sh script for the entire genome
 
 # UPDATE 20161025: Feature for specific chromosome analysis added
-# UPDATE 20161027: Implemented the MASK feature. Compatibility with Andromeda evaluated and minor issues fixed.
 
-display_usage() {
-	echo -e "\nThis script analyses patterns of variation along the entire genome by repeatedly calling VCFmerger.sh for each chromosome"
+# Add DOWNLOAD and MASK option
+
+display_usage() { 
+	echo -e "\nThis script analyses patterns of variation along the entire genome by repeatedly calling VCFmerger.sh for each chromosome" 
 	echo -e "\nUsage:\n $(basename "$0") [-w --window] [-msk --mask] [-dl --download]"
-	echo -e "\nOptions:\n -w, --window \t Specifies the size of the window to be analyzed [10000]"
+	echo -e "\nOptions:\n -w, --window \t Specifies the size of the window to be analyzed [10000]" 
 	echo -e " -msk, --mask \t Indicates what 1000 Genomes Project mask should be used (Pilot/Strict) [Pilot]"
 	echo -e " -dl, --download \t Determines whether the necessary files should be downloaded from predefined URLs [FALSE]"
 	echo -e " -pop, --population \t Conducts the analysis by population (26/5/name/FALSE) [FALSE]"
 	echo -e " -chr, --chromosome \t Analyses a single chromosome (in format NN, e.g. 22) [ALL]"
-	}
+	} 
 
 #####################################
 ## ARGUMENT EVALUATION AND PARSING ##
@@ -21,12 +22,12 @@ display_usage() {
 
 ## ARGUMENT EVALUATION ##
 
-# Check whether user had supplied -h or --help . If yes display usage
-if [[ ( $1 == "--help") ||  $1 == "-h" ]]
-then
+# Check whether user had supplied -h or --help . If yes display usage 
+if [[ ( $1 == "--help") ||  $1 == "-h" ]] 
+then 
 	display_usage
 	exit 0
-fi
+fi 	
 
 ## ARGUMENT PARSING ##
 
@@ -36,8 +37,7 @@ POP="FALSE"
 DL="FALSE"
 CHR=`seq 1 22` # ALL chromosomes
 
-while [[ $# -gt 1 ]] # next two arguments (window + size)
-
+while [[ $# -gt 1 ]]
 do
 	case "$1" in
 		-w|--window)
@@ -73,15 +73,11 @@ do
 shift
 done
 
-# Redirect stdout ( > ) into a named pipe ( >() ) running "tee".
-rm -f WindowsAnalyzer.log
-exec > >(tee -a WindowsAnalyzer.log) 2>&1
-
 ##############################
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-WORKING="$HOME/Genomics"
+WORKING="~/Genomics"
 
 gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
 gpdat="$WORKING/1000GP" # No files required 
@@ -89,28 +85,25 @@ alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by c
 alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
 finaldir="$WORKING/Final" # Contains GFF files
 
-BCFTOOLS="/home/roger/Software/bcftools"
-
-maskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
-echo $maskfile
+mskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
 
 if [ "$DL" == "TRUE" ]; then # DOWNLOAD?
-	echo "The files required for the analysis will be downloaded"
+	echo "The files required for the analysis will be downloaded"	
 	cd $gpraw
 	wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
 	cd $gpdat/Others
 	wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
 	cd $alnraw
-	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser
+	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
 	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.fa.gz,chr$i.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
 	cd $gpdata/Masks
 	wget -nd -r -l0 -np -A "*mask.whole*" -R "index.html*","*combined*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
-fi
+fi	
 
 genome_analysis() {
 	for i in $CHR; do
 		# POLYMORPHISM #
-		echo -e "Processing polymorphism data: chr$i"
+		echo -e "Processing polymorphism data: chr$i" 
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
 		cd $gpdat
 		if [ ! -e chr$i\_gp.vcf.gz ]; then # Only if the files have not been previously filtered. Not quotes because it's not a variable.
@@ -125,34 +118,36 @@ genome_analysis() {
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
 			echo -e "Excluding males from chromosome X"
 			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',')
-			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
+			bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
 			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf chr$i.temp.vcf f $gpfile
 		elif [ "$i" == "Y" ]; then
 			echo -e "Converting chromosome Y to pseudo-diploid"
 			zcat $gpfile | perl -p -e 's/\t([01.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
+			#echo '##fileformat=VCFv4.1\n##FILTER=<ID=PASS,Description="All filters passed">"' > chr$i.temp.vcf
+			#bcftools query -f '%CHROM\t%POS\t%ID\t%REF\t%ALT\t%QUAL\t%FILTER\tAA=%INFO/AA;AC=%INFO/AC;AN=%INFO/AN\tGT\t[\t%GT|%GT]\n' >> chr$i.temp.vcf
 			bgzip chr$i.temp.vcf; mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile
-		fi
+		fi	
 
-		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to integrated_call_samples_v3ontain
+		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to integrated_call_samples_v3ontain 
 			popname=$1
 			echo "1"
 			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 			echo "Extracting the individuals of the selected population: $popname"
-			$BCFTOOLS/bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
-			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
+			bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$1.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+			gpfile=chr$i$1.vcf.gz # In population mode, then gpfile is the 
 			echo $gpfile	
 			tabix -p vcf $gpfile
 		fi
 
 		 # DIVERGENCE #
-		echo -e "Processing divergence data: chr$i"
+		echo -e "Processing divergence data: chr$i" 
 		alnfile=chr$i\_aln.vcf.gz # Alignment file in VCF
 		cd $alndat
 		if [ ! -e "$alnfile" ]; then
 			cd $alnraw
-			alnstart=chr$i\_aln.mfa # Alignment file in MFA
+			alnstart=chr$i\_aln.mfa # Alignment file in MFA	
 			gunzip -c chr$i.mfa.gz | grep -v "score" > $alnstart # Remove 'score' lines from the MFA file
 			mv $alnstart $alndat; cd $alndat
 			gunzip chr$i.fa.gz # Uncompress the FASTA sequence
@@ -161,16 +156,16 @@ genome_analysis() {
 		fi
 
 		# PREANALYSIS (GFF to FASTA) #	
-		cd $finaldir		
+		cd $finaldir
 		echo -e "Extracting the annotation file to a sequence format"
+		cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
 		if [ ! -e "gffseq_chr$i.RData" ]; then
-			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome		
-			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+		GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
 		fi			
 
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
-		grep "chr$i" $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
+		grep "chr$i" $mskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
 		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
 		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
@@ -191,7 +186,7 @@ genome_analysis() {
 ## ANALYSIS BY POPULATIONS ##
 #############################
 
-if [ "$POP" == "FALSE" ]; then
+if [ "$POP" == "FALSE" ]; then 	
 	genome_analysis
 elif [ "$POP" == "5" ]; then
 	# Super-populations (5) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
@@ -204,7 +199,7 @@ elif [ "$POP" == "26" ]; then
 	allpops=$(cd $gpdat/Others && cut -f2 PopulationIndividualsList.panel | sort -u | grep -v "pop" | tr '\n' ' ')
 	for npop in $allpops; do
 		genome_analysis $npop
-	done
+	done	
 else
 	genome_analysis $POP
 fi
