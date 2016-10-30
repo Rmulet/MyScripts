@@ -14,8 +14,6 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
-suppressMessages(library(DBI))
-suppressMessages(library(RMySQL))
 
 # zz <- file("Warnings.dat","w")
 # sink("Warnings.dat",append=TRUE)
@@ -101,12 +99,12 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   
   # OTHER ESTIMATORS:
   
-  # To fully implement extended MKT, we need ms/mns, that is, the number of sites
-  # of each class. Doing that would require modifying the 'set.synnonsyn2' function
-  # to obtain all codons and check fold in every position (0,1,2)
+  # To implement extended MKT and calculate K0/1, we need m0/m1, that is, the number of sites 
+  # of each class. This can be obtained from the gffseq vector.
   
   m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
   m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
+  if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))}
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
   b <- (Psel.weak/Pneu)*(m.neu/m.sel)
@@ -188,8 +186,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
     DAF <- hist(mafan$DAF,seq(0.0,1,0.05),plot=F)$counts
     DAF <- paste(DAF,collapse = ";")
   } else {DAF <- NA}
-  Sys.sleep(3)
-  
+
   print(sort(sapply(ls(),function(x){object.size(get(x))}))) # Memory of each object
   
   ## POLYMORPHISM ## 
@@ -292,7 +289,7 @@ cat("Maskfile loaded\n")
 ## GENE BY GENE ANALYSIS:
 
 init <- Sys.time()
-for (i in 1:20) {
+for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
   print(sprintf("Gene number %d: %d - %d",i,ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
@@ -345,24 +342,28 @@ export <- cbind(gendata,tabsum)
 export.name <- "GenesDB"
 
 # EXPORT DATA TABLE
+save(export,file=sprintf("GeneData_chr%s.RData",chrom))
 write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
 
-# EXPORT TO MYSQL DATABASE
-con <- dbConnect(RMySQL::MySQL(),
-                 user="root", password="RM333",
-                 dbname="PEGH", host="localhost")
-first <- !dbExistsTable(con,export.name)
-
-t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
-
-if ("try-error" %in% class(t)) {
-  save(export,file=sprintf("failedexport_chr%s.RData",chrom))
+if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
+  
+  suppressMessages(library(DBI))
+  suppressMessages(library(RMySQL))
+  # EXPORT TO MYSQL DATABASE
+  con <- dbConnect(RMySQL::MySQL(),
+                   user="root", password="RM333",
+                   dbname="PEGH", host="localhost")
+  first <- !dbExistsTable(con,export.name)
+  
+  t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
+  
+  if ("try-error" %in% class(t)) {
+    save(export,file=sprintf("failedexport_chr%s.RData",chrom))
+  }
+  
+  if (first == TRUE) {# Remove if we want to concatenate various chromosomes
+    dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
+    dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (name);",export.name))
+  }
+  on.exit(dbDisconnect(con))
 }
-
-if (first == TRUE) {# Remove if we want to concatenate various chromosomes
-  dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
-  dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (name);",export.name))
-}
-
-on.exit(dbDisconnect(con))
-closeAllConnections()
