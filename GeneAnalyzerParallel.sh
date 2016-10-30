@@ -41,37 +41,48 @@ fi
 export MASK="pilot"
 export POP="FALSE"
 export DL="FALSE"
-export ALL=`seq 1 22`
+export ALL=`seq 1 22` 	
 
-while [[ $# > 0 ]]
+while [[ $# -gt 1 ]]
 do
 	case "$1" in
 		-msk|--mask)
-		MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
+		export MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
 		echo -e "1000 GP mask set to $MASK"
-		shift 2
+		shift
 		;;
 		-dl|--download)
-		DL="$2" # $1 has the name, $2 the value
+		export DL="$2" # $1 has the name, $2 the value
 		echo -e "ALL necessary files will be downloaded: $DL"
-		shift 2
+		shift
 		;;
 		-pop|--population)
-		POP="$2" # $1 has the name, $2 the value
+		export POP="$2" # $1 has the name, $2 the value
 		if [ "$POP" == "26" ]; then echo "All populations will be analysed"
 		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
 		else echo -e "Population $POP will be analysed"; fi
-		shift 2
-		;;			
+		shift 	 	
+		;;		
 		-chr|--chromosome)
         export CHR="$2" # $1 has the name, $2 the value
         echo -e "Only chromosome $CHR will be analysed"
-        shift 2
+        shift
         ;;
 		*) # No more options
 	    ;;
 	esac
+shift	
 done
+
+if [[ -z "$CHR" ]]; then
+        echo -e 'Error: You have not specified a chromosome to perform the analysis'
+        exit -1
+fi
+
+if [[ "$DL" != "TRUE" ]] && [[ "$DL" != "FALSE" ]]; then
+        echo -e 'Error: The -dl option must be either TRUE or FALSE'
+        exit -1
+fi
 
 ##############################
 ## VARIABLES AND DATA PATHS ##
@@ -111,9 +122,8 @@ START=$(date +%s)
 
 genome_analysis() {
 	i=$1 # Argument passed to the function
-    i=$1 # Argument passed to the function
-    mkdir chr$i
-    cp 'GenesTable.RData' ./chr$i
+    mkdir chr$i # Each chromosome in a folder to prevent interference
+    ln -s 'GenesTable.RData' $finaldir/chr$i
     ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i
 		
 	# POLYMORPHISM #
@@ -132,11 +142,10 @@ genome_analysis() {
 
 	if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to contain individuals and populations
 		popname=$2
-		echo "1"
 		popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 		echo "Extracting the individuals of the selected population: $popname"
-		bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$1.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
-		gpfile=chr$i$1.vcf.gz # In population mode, then gpfile is the 
+		bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+		gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
 		echo $gpfile	
 		tabix -p vcf $gpfile
 	fi

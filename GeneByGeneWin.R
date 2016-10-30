@@ -120,10 +120,10 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA don't need to be loaded.
-  region <- readVCF("a.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
+  region <- readVCF("merge10.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   
   # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
-  if (is.null(region)||is.logical(region)) { #
+  if (region@n.biallelic.sites==0|is.logical(region)) {
     newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }

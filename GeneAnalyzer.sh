@@ -40,30 +40,46 @@ MASK="pilot"
 POP="FALSE"
 DL="FALSE"
 
-while [[ $# > 0 ]]
+while [[ $# -gt 1 ]]
 do
 	case "$1" in
 		-msk|--mask)
-		MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
+		export MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
 		echo -e "1000 GP mask set to $MASK"
-		shift 2
+		shift
 		;;
 		-dl|--download)
-		DL="$2" # $1 has the name, $2 the value
+		export DL="$2" # $1 has the name, $2 the value
 		echo -e "ALL necessary files will be downloaded: $DL"
-		shift 2
+		shift
 		;;
 		-pop|--population)
-		POP="$2" # $1 has the name, $2 the value
+		export POP="$2" # $1 has the name, $2 the value
 		if [ "$POP" == "26" ]; then echo "All populations will be analysed"
 		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
 		else echo -e "Population $POP will be analysed"; fi
-		shift 2
+		shift 	 	
 		;;		
+		-chr|--chromosome)
+        export CHR="$2" # $1 has the name, $2 the value
+        echo -e "Only chromosome $CHR will be analysed"
+        shift
+        ;;
 		*) # No more options
 	    ;;
 	esac
+shift
 done
+
+if [[ -z "$CHR" ]]; then
+        echo -e 'Error: You have not specified a chromosome to perform the analysis'
+        exit -1
+fi
+
+if [[ "$DL" != "TRUE" ]] && [[ "$DL" != "FALSE" ]]; then
+        echo -e 'Error: The -dl option must be either TRUE or FALSE'
+        exit -1
+fi
 
 ##############################
 ## VARIABLES AND DATA PATHS ##
@@ -89,7 +105,7 @@ if [ "$DL" == "TRUE" ]; then
 	cd $alnraw
 	wget -e robots=off -nc -nd -r -l1 -np -A chr??.mfa.gz,chr?.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser 
 	wget -e robots=off -nc -nd -r -l1 -np -A chr??.fa.gz,chr?.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/# Sequence - UCSC
-	cd $gpdata/Masks
+	cd $gpdata/Masks/FASTA
 	wget -nc -nd -r -l0 -np -A strict,pilot ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
 fi
 
@@ -123,8 +139,8 @@ genome_analysis() {
 		echo "1"
 		popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 		echo "Extracting the individuals of the selected population: $popname"
-		bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$1.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
-		gpfile=chr$i$1.vcf.gz # In population mode, then gpfile is the 
+		bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+		gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
 		echo $gpfile	
 		tabix -p vcf $gpfile
 	fi
