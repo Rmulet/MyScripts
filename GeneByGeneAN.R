@@ -130,6 +130,9 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
     return(newrow)
   }
 
+  require(bigmemory)
+  options(bigmemory.allow.dimnames=TRUE)
+
   ## DEFINE POPULATION/OUTGROUP ##
   
   # The outgroup can be defined as a different population so that calculations of diversity and neutrality 
@@ -294,7 +297,7 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d: %d - %d",i,ini,end))
+  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
