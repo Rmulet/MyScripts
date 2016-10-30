@@ -44,27 +44,27 @@ while [[ $# -gt 1 ]]
 do
 	case "$1" in
 		-msk|--mask)
-		export MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
+		MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
 		echo -e "1000 GP mask set to $MASK"
 		shift
 		;;
 		-dl|--download)
-		export DL="$2" # $1 has the name, $2 the value
+		DL="$2" # $1 has the name, $2 the value
 		echo -e "ALL necessary files will be downloaded: $DL"
 		shift
 		;;
 		-pop|--population)
-		export POP="$2" # $1 has the name, $2 the value
+		POP="$2" # $1 has the name, $2 the value
 		if [ "$POP" == "26" ]; then echo "All populations will be analysed"
 		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
 		else echo -e "Population $POP will be analysed"; fi
 		shift 	 	
 		;;		
 		-chr|--chromosome)
-        export CHR="$2" # $1 has the name, $2 the value
-        echo -e "Only chromosome $CHR will be analysed"
-        shift
-        ;;
+        	CHR="$2" # $1 has the name, $2 the value
+        	echo -e "Only chromosome $CHR will be analysed"
+        	shift
+        	;;
 		*) # No more options
 	    ;;
 	esac

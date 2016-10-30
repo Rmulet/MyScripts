@@ -75,6 +75,16 @@ do
 shift
 done
 
+if [[ -z "$CHR" ]]; then
+        echo -e 'Error: You have not specified a chromosome to perform the analysis'
+        exit -1
+fi
+
+if [[ "$DL" != "TRUE" ]] && [[ "$DL" != "FALSE" ]]; then
+        echo -e 'Error: The -dl option must be either TRUE or FALSE'
+        exit -1
+fi
+
 ##############################
 ## VARIABLES AND DATA PATHS ##
 ##############################
