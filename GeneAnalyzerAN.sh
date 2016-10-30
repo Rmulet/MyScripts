@@ -53,8 +53,8 @@ do
 		;;
 		-pop|--population)
 		POP="$2" # $1 has the name, $2 the value
-		if [ "$POP" == "26" ]; then echo "All populations will be analysed\n"
-		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed\n"
+		if [ "$POP" == "26" ]; then echo -e "All populations will be analysed\n"
+		elif [ "$POP" == "5" ]; then echo -e "The 5 super-populations will be analysed\n"
 		else echo -e "Population $POP will be analysed"; fi
 		shift
 		;;
@@ -199,5 +199,5 @@ else
 fi
 
 END=$(date +%s)
-DIFF=$(( $END - $START ))
+DIFF=$(( END - START ))
 echo "Runtime: $DIFF seconds"
