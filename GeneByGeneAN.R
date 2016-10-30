@@ -105,7 +105,8 @@ mkt.extended <- function (sel=0,neu=4) {
   
   m.neu <- sum(bial.class == neu,na.rm=T)
   m.sel <- sum(bial.class == sel,na.rm=T)
-  
+  if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))} # Intergenic are NAs
+    
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
   b <- (Psel.weak/Pneu)*(m.neu/m.sel)
   y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
