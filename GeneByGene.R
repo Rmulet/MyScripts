@@ -157,8 +157,6 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   
   misshuman <- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
   poly.sites <<- apply(bial[1:n,,drop=F],2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
-  #bialhuman <- bialhuman[,poly.sites,drop=FALSE] # Keep only polymorphic sites
-  #bial[1:n,poly.sites,drop=F] # Remove outgroup (drop = F to keep 1 dimension)
   
   cat("\nBiallelic matrix filtered\n")
   
@@ -251,12 +249,13 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 ## GENE ANALYSIS ##
 ###################
 
+# REPLACE PATH TO BCFTOOLS OUTSIDE ANDROMEDA
 merge.vcf <- function(ini,end,filename) { # Indicate the directory if experimental bcftools is local (Andromeda)
-  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+  t <- try(system(sprintf("home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                           filename,chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
-    system(sprintf("bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+    system(sprintf("home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                    filename,chrom,ini,end,gpfile,alnfile))
   }
   system(sprintf("tabix -p vcf %s",filename))
