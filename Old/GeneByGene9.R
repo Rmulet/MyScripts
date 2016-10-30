@@ -1,7 +1,7 @@
 #!/usr/bin/Rscript
 
 # setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
-# gpfile <- "chr4_gp.vcf.gz" ; alnfile <- "chr4_aln.vcf.gz"; chrom <- "4" ; maskfile <- "20140520.chr4.pilot_mask.fasta.gz"
+# gpfile <- "chr9_gp.vcf.gz" ; alnfile <- "chr9_aln.vcf.gz"; chrom <- "9" ; maskfile <- "20140520.chr9.pilot_mask.fasta.gz"
 ## filename <- "chr22_merge.vcf.gz"; ini <- 38944867; end <- 38966701; chrom <- "22"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
@@ -13,6 +13,8 @@
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
+suppressMessages(library(DBI))
+suppressMessages(library(RMySQL))
 
 # zz <- file("Warnings.dat","w")
 # sink("Warnings.dat",append=TRUE)
@@ -103,8 +105,8 @@ mkt.extended <- function (sel=0,neu=4) {
   # of each class. Doing that would require modifying the 'set.synnonsyn2' function
   # to obtain all codons and check fold in every position (0,1,2)
   
-  m.neu <- sum(bial.class == neu,na.rm=T)
-  m.sel <- sum(bial.class == sel,na.rm=T)
+  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
+  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
   b <- (Psel.weak/Pneu)*(m.neu/m.sel)
@@ -119,6 +121,12 @@ mkt.extended <- function (sel=0,neu=4) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos) {
+  vcount <- as.numeric(system(sprintf('zcat %s | grep -v "#" | wc -l',filename),intern=TRUE))
+  if (vcount == 0) { # Check if there are variants to prevent PopGenome error
+    cat ("There are no variants in this VCF file")
+    newrow <- c(rep(0,6),rep(NA,85)) # Empty rows
+    return(newrow)
+  }
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
 
@@ -187,7 +195,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
     DAF <- paste(DAF,collapse = ";")
   } else {DAF <- NA}
   
-  print(sort(sapply(ls(),function(x){object.size(get(x))})))
+  print(sort(sapply(ls(),function(x){object.size(get(x))}))) # Memory of each object
   
   ## POLYMORPHISM ## 
   
@@ -226,8 +234,8 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
   
   ## NATURAL SELECTION REGIMES ##
   
-  sites <- as.numeric(colnames(bial)) # Biallelic sites
-  bial.class <<- gffseq[sites] # GFF feature in each site. Equivalent to the former 'syn'
+  bial.sites <- as.numeric(colnames(bial)) # Biallelic sites
+  bial.class <<- gffseq[bial.sites] # GFF feature in each site. Equivalent to the former 'syn'
   # syn <- region@region.data@synonymous[[1]][ac.bial] # Contains syn and non-syn positions [accessible]
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
@@ -253,6 +261,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
 ## GENE ANALYSIS ##
 ###################
 
+<<<<<<< HEAD:GeneByGeneAN.R
 merge.vcf <- function(ini,end,filename) {
   t <- try(system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                           filename,chrom,ini,end,gpfile,alnfile)))
@@ -260,6 +269,15 @@ merge.vcf <- function(ini,end,filename) {
     gc(reset=T)
     system(sprintf("~/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                    filename,chrom,ini,end,gpfile,alnfile))
+=======
+merge.vcf <- function(ini,end) {
+  t <- try(system(sprintf("bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                          chrom,ini,end,gpfile,alnfile)))
+  if ("try-error" %in% class(t)) {
+    gc(reset=T)
+    system(sprintf("bcftools/bcftools merge -Oz --missing-to-ref -o merge_gene.vcf.gz -r %s:%d-%d %s %s",
+                   chrom,ini,end,gpfile,alnfile))
+>>>>>>> 15840dbd4d2c0a57874515118d46956c004c1708:Old/GeneByGene9.R
   }
   system(sprintf("tabix -p vcf %s",filename))
 }
@@ -269,17 +287,21 @@ merge.vcf <- function(ini,end,filename) {
 load("GenesTable.RData")
 gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
 gendata <- gendata[order(gendata$start),]
+<<<<<<< HEAD:GeneByGeneAN.R
 gendata$start <- gendata$start-500 # Upstream(+strand)
+=======
+gendata$start <- gendata$start-500 # Upstream(-strand)
+>>>>>>> 15840dbd4d2c0a57874515118d46956c004c1708:Old/GeneByGene9.R
 gendata$end <- gendata$end+500 # Downstream(+strand)
 ngenes <- nrow(gendata)
 
+# TABLE WITH DATA:
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
 colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
 ## PREANALYSIS: GFF AND MASK:
 
 load(sprintf("gffseq_chr%s.RData",chrom))
-
 
 library("Biostrings")
 maskfasta <- readBStringSet(maskfile) # Reading files in gz format IS supported
@@ -343,7 +365,24 @@ colnames(tabsum) <- db.names
 export <- cbind(gendata,tabsum)
 export.name <- "GenesDB"
 
+<<<<<<< HEAD:GeneByGeneAN.R
 save(export,file=sprintf("GeneData_chr%s.RData",chrom))
 write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
+=======
+# EXPORT DATA TABLE
+write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
+
+# EXPORT TO MYSQL DATABASE
+con <- dbConnect(RMySQL::MySQL(),
+                 user="root", password="RM333",
+                 dbname="PEGH", host="localhost")
+first <- !dbExistsTable(con,export.name)
+
+t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
+
+if ("try-error" %in% class(t)) {
+  save(export,file=sprintf("failedexport_chr%s.RData",chrom))
+}
+>>>>>>> 15840dbd4d2c0a57874515118d46956c004c1708:Old/GeneByGene9.R
 
 closeAllConnections()

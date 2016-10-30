@@ -18,6 +18,7 @@
 # UPDATE7: GFFtoFASTA has replaced 'set.synnonsyn_alt' as the method of choic for MKT.
 # UPDATE8: Change in the coordinate system according to the mask in pseudo-BED format.
 
+
 #############################
 ## IMPORT AND PREPARE DATA ##
 #############################
@@ -53,7 +54,6 @@ region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknow
 # Verify that the region contains variants and has been loaded onto R.
 if (is.null(region)||is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
   print("This region does not contain any variants")
-}
 
 load(sprintf("gffseq_chr%s.RData",chrom)) # Annotation data from GFFtoFASTA
 
@@ -79,8 +79,9 @@ windows <- unlist(strsplit(slide@region.names,":")) # Retrieves window labels wi
 windows <- t(sapply(strsplit(windows,"-"),as.numeric))
 colnames(windows) <- c("start","end")
 nwin <- nrow(windows)
-allwinsites <- slide@region.data@biallelic.sites # Positions in each window
-allwindex <- slide@SLIDE.POS
+allwinsites <- slide@region.data@biallelic.sites # Position coordinates in each window
+allwindex <- slide@SLIDE.POS # Indices in the biallelic matrix
+
 
 #####################################
 ## GLOBAL STATISTICS AND VARIABLES ##
@@ -136,6 +137,7 @@ measures <- function(object) {
     return(round(pi,7))
   }
   # TABLE CONTAINING THE DATA:
+
   tabsum <- as.data.frame(matrix(numeric(nwin*15),ncol=15,nrow=nwin))
   colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Psel","Pneu","Dsel","Dneu","msel","mneu")
 

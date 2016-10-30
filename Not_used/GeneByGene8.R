@@ -118,6 +118,9 @@ mkt.extended <- function (sel=0,neu=4) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos) {
+  vcount <- as.numeric(system(sprintf('zcat %s | grep -v "#" | wc -l',filename),intern=TRUE))
+  if (scount == 0) {
+    cat "There are no variants"}
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # region <- set.synnonsyn(region,ref.chr=sprintf("chr%s.fa",chrom),save.codons=FALSE) 
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.

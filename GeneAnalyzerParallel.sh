@@ -9,7 +9,9 @@
 # Add MASK option
 
 # EXECUTE 'Dependencies.R' once before initializing the pipeline: it contains R libraries that must be installed AND generates a list
-# of genes that will be analyzed. The purpose of this is two-fold: enable the execution in old machines (e.g. Andromeda) and speed up the
+# of genes that will be analyzed. The purpose of this is two-fold: enable the execution in old machines (e.g. Andromeda) and speed up the analysis.
+# NOTE: Parallel execution requires 'GNU Parallel', which is currently available at Andromeda. Should it fail to execute on a different machine, it
+# can be easily installed. Otherwise, it can be replaced with 'xargs'.
 
 display_usage() { 
 	echo -e "\nEvaluates natural selection regimes and population genetics statistics in a gene-restricted manner" 
@@ -36,9 +38,10 @@ fi
 
 ## ARGUMENT PARSING ##
 
-MASK="pilot"
-POP="FALSE"
-DL="FALSE"
+export MASK="pilot"
+export POP="FALSE"
+export DL="FALSE"
+export ALL=`seq 1 22`
 
 while [[ $# > 0 ]]
 do
@@ -59,7 +62,12 @@ do
 		elif [ "$POP" == "5" ]; then echo "The 5 super-populations will be analysed"
 		else echo -e "Population $POP will be analysed"; fi
 		shift 2
-		;;		
+		;;			
+		-chr|--chromosome)
+        export CHR="$2" # $1 has the name, $2 the value
+        echo -e "Only chromosome $CHR will be analysed"
+        shift 2
+        ;;
 		*) # No more options
 	    ;;
 	esac
@@ -69,15 +77,15 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-WORKING="$HOME/Documents/2_GenomicsData" # MODIFY THIS VARIABLE TO EXECUTE IN A DIFFERENT DIRECTORY
+export WORKING="$HOME/Documents/2_GenomicsData" # MODIFY THIS VARIABLE TO EXECUTE IN A DIFFERENT DIRECTORY
 
-gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
-gpdat="$WORKING/1000GP" # No files required 
-alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
-alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+export gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
+export gpdat="$WORKING/1000GP" # No files required 
+export alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
+export alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
+export finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
 
-maskdir="$gpdat/Masks/FASTA"
+export maskdir="$gpdat/Masks/FASTA"
 
 ## DOWNLOAD FILES [OPTIONAL]
 if [ "$DL" == "TRUE" ]; then
@@ -102,9 +110,13 @@ cd $finaldir
 START=$(date +%s)
 
 genome_analysis() {
-	i=$1
+	i=$1 # Argument passed to the function
+    i=$1 # Argument passed to the function
+    mkdir chr$i
+    cp 'GenesTable.RData' ./chr$i
+    ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i
+		
 	# POLYMORPHISM #
-	i=21
 	echo -e "Processing polymorphism data: chr$i" 
 	gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
 	cd $gpdat
@@ -119,7 +131,7 @@ genome_analysis() {
 	fi
 
 	if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to contain individuals and populations
-		popname=$1
+		popname=$2
 		echo "1"
 		popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 		echo "Extracting the individuals of the selected population: $popname"
@@ -164,28 +176,28 @@ genome_analysis() {
 	echo -e "Analysis of chr$i complete.\n"
 	rm chr$i*.vcf* # Removes the symbolic links 
 }
-
+export -f genome_analysis
 
 #############################
 ## ANALYSIS BY POPULATIONS ##
 #############################
 
 if [ "$POP" == "FALSE" ]; then 	
-	genome_analysis
+	parallel --gnu -j8 genome_analysis ::: `seq 1 22`
 elif [ "$POP" == "5" ]; then
 	# Super-populations (5) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
 	superpops=$(cd $gpdat/Others && cut -f3 PopulationIndividualsList.panel | sort -u | grep -v "super_pop" | tr '\n' ' ')
 	for spop in $superpops; do
-		genome_analysis $spop
+		parallel --gnu -j8 genome_analysis ::: `seq 1 22` ::: $spop
 	done
 elif [ "$POP" == "26" ]; then
 	# The 1000 GP populations (26)) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
 	allpops=$(cd $gpdat/Others && cut -f2 PopulationIndividualsList.panel | sort -u | grep -v "pop" | tr '\n' ' ')
 	for npop in $allpops; do
-		genome_analysis $npop
+		parallel --gnu -j8 genome_analysis ::: `seq 1 22` ::: $npop
 	done	
 else
-	genome_analysis $POP
+	parallel --gnu -j8 genome_analysis ::: `seq 1 22` ::: $POP
 fi
 
 END=$(date +%s)
