@@ -34,7 +34,7 @@ WINDOW=10000
 MASK="pilot"
 POP="FALSE"
 DL="FALSE"
-CHR=`seq 1 22` # ALL chromosomes
+CHR=`seq 1 22 X Y` # ALL chromosomes
 
 while [[ $# -gt 1 ]] # next two arguments (window + size)
 

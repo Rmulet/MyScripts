@@ -251,11 +251,11 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 
 # REPLACE PATH TO BCFTOOLS OUTSIDE ANDROMEDA
 merge.vcf <- function(ini,end,filename) { # Indicate the directory if experimental bcftools is local (Andromeda)
-  t <- try(system(sprintf("home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+  t <- try(system(sprintf("/home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                           filename,chrom,ini,end,gpfile,alnfile)))
   if ("try-error" %in% class(t)) {
     gc(reset=T)
-    system(sprintf("home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
+    system(sprintf("/home/roger/Software/bcftools/bcftools merge -Oz --missing-to-ref -o %s -r %s:%d-%d %s %s",
                    filename,chrom,ini,end,gpfile,alnfile))
   }
   system(sprintf("tabix -p vcf %s",filename))

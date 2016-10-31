@@ -1,12 +1,13 @@
 #!/bin/bash
 
-# GENE ANALYZER 0.2 - Evaluates natural selection regimes and population genetics statistics in a gene-restricted manner.
+# GENE ANALYZER 0.5 - Evaluates natural selection regimes and population genetics statistics in a gene-restricted manner.
 
 # IMPORTANT: This pipeline assumes the usage of a GFF file with UCSC annotation. Since UCSC data are not provided in this format
 # by default, the Perl script UCSC_table2GFF3 is used. Alternatively, it could be downloaded and transformed with gtf2gff3.pl
 # UPDATE: Symbolic links have been removed. Now the scrips directly access the input from their real location.
+# UPDATE: GeneAnalyzer has implemented the CHR and MASK arguments, allowing the user to futher customize the analysis.
 
-# Add DOWNLOAD and MASK option
+# WARNING: Two separate processes of PopGenome CANNOT run in PARALLEL in the same folder.
 
 display_usage() { 
 	echo -e "\nEvaluates natural selection regimes and population genetics statistics in a gene-restricted manner" 
@@ -90,7 +91,14 @@ gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromoso
 gpdat="$WORKING/1000GP" # No files required 
 alnraw="$WORKING/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromosomes
 alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
-finaldir="$WORKING/Final/GeneByGene" # Contains GFF files (can be removed with some tweaking of GFFtoFASTA)
+finaldir="$WORKING/Final/GeneByGene"
+
+if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
+	mkdir -p chr$CHR
+	ln -s $finaldir/GenesTable.RData $finaldir/chr$CHR
+	ln -s $finaldir/gffseq_chr$CHR.RData $finaldir/chr$CHR
+	finaldir="$WORKING/Final/GeneByGene/chr$CHR"
+fi
 
 # maskdir="$gpdat/Masks/FASTA"
 
