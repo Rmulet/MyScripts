@@ -274,19 +274,18 @@ load("GenesTable.RData")
 gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
 gendata$start <- gendata$start-500 # Upstream(+strand)
 gendata$end <- gendata$end+500 # Downstream(+strand)
+# Convert the factors into strings
 gendata[sapply(gendata,is.factor)] <- lapply(gendata[sapply(gendata,is.factor)],as.character)
 
 for(long in which(gendata$end-gendata$start > 10000000)) {
   print(gendata[long,])
   cut <- ceiling(mean(c(gendata$start[long],gendata$end[long])))
-  newrow <- c(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long])  
+  newrow <- list(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long])  
   gendata$name[long] <- paste(gendata$name[long],"A",sep='')
   gendata$end[long] <- cut
   gendata <- rbind(gendata,newrow)
 }
 gendata <- gendata[order(gendata$start),]
-  
-
 ngenes <- nrow(gendata)
 
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
@@ -309,7 +308,7 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
+  print(sprintf("Gene number %s (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
