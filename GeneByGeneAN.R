@@ -272,9 +272,21 @@ merge.vcf <- function(ini,end,filename) {
 
 load("GenesTable.RData")
 gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes in this chromosome
-gendata <- gendata[order(gendata$start),]
 gendata$start <- gendata$start-500 # Upstream(+strand)
 gendata$end <- gendata$end+500 # Downstream(+strand)
+gendata[sapply(gendata,is.factor)] <- lapply(gendata[sapply(gendata,is.factor)],as.character)
+
+for(long in which(gendata$end-gendata$start > 10000000)) {
+  print(gendata[long,])
+  cut <- ceiling(mean(c(gendata$start[long],gendata$end[long])))
+  newrow <- c(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long])  
+  gendata$name[long] <- paste(gendata$name[long],"A",sep='')
+  gendata$end[long] <- cut
+  gendata <- rbind(gendata,newrow)
+}
+gendata <- gendata[order(gendata$start),]
+  
+
 ngenes <- nrow(gendata)
 
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
@@ -297,24 +309,6 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  if(end-ini > 10000000){
-    print("The gene under analysis is too big and will be split into two")
-    end1=ceiling(mean(c(ini,end))  
-    ini2=end1+1
-    gendata$name[i] <- paste(gendata$name[i],"A",sep='')
-    filename <- sprintf("merge_gene%s.vcf.gz",gendata$name[i])
-    ac.pos <- (ini:end1)[pass] # Vector with gene positions that are accessible
-    gendata$missing[i] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not
-    merge.vcf(ini,end1,filename)
-    tabsum[i,] <- popanalysis(filename,ini,end1,chrom,ac.pos)
-		 	
-    gendata$name[nrow(gendata)+1] <- paste(gendata$name[i],"B",sep='')
-    filename <- sprintf("merge_gene%s.vcf.gz",gendata$name[nrow(gendata)+1])
-    ac.pos <- (ini:end1)[pass] # Vector with gene positions that are accessible
-    gendata$missing[(nrow(gendata)+1] <- (1-sum(pass)/length(pass))*100 # Proportion of positions that do not
-    merge.vcf(ini2,end,filename)
-    tabsum[i,] <- popanalysis(filename,ini2,end,chrom,ac.pos)
-  }
   print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
