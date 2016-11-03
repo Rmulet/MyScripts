@@ -164,7 +164,7 @@ genome_analysis() {
 		echo -e "Extracting the annotation file to a sequence format"
 		if [ ! -e "gffseq_chr$i.RData" ]; then
 			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
-			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+			GFFtoFASTA.R chr$i.fa $i # Puts the GFF annotation in a sequence
 		fi
 
 		if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
@@ -180,7 +180,7 @@ genome_analysis() {
 		maskfile=$gpdat/Masks/FASTA/$(cd $gpdat/Masks/FASTA && ls -d *chr$i.$MASK*fasta*) # Depends on the chosen criteria. Underscore must be escaped.
 		echo -e "Analysing polymorphism and divergence in chr$i"
 		echo $gpfile $alnfile $maskfile $i
-		GeneByGeneAN.R $gpdat/$gpfile $alndat/$alnfile $maskfile $i
+		GeneByGene.R $gpdat/$gpfile $alndat/$alnfile $maskfile $i
 		echo -e "Analysis of chr$i complete.\n"		
 	done
 }

@@ -165,7 +165,7 @@ genome_analysis() {
 		echo -e "Extracting the annotation file to a sequence format"
 		if [ ! -e "gffseq_chr$i.RData" ]; then
 			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome		
-			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+			GFFtoFASTA.R chr$i.fa $i # Puts the GFF annotation in a sequence
 		fi			
 
 		# MERGE AND ANALYSIS #

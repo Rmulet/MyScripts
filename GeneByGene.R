@@ -273,13 +273,14 @@ gendata$end <- gendata$end+500
 gendata[sapply(gendata,is.factor)] <- lapply(gendata[sapply(gendata,is.factor)],as.character)
 
 for(long in which(gendata$end-gendata$start > 10000000)) {
-  print(gendata[long,])
+  cat(sprintf("The gene %s has been split to prevent memory issues",gendata$name[long]))
   cut <- ceiling(mean(c(gendata$start[long],gendata$end[long])))
-  newrow <- list(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long])  
+  newgene <- list(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long]) 
   gendata$name[long] <- paste(gendata$name[long],"A",sep='')
   gendata$end[long] <- cut
-  gendata <- rbind(gendata,newrow)
+  gendata <- rbind(gendata,newgene)
 }
+gendata <- gendata[order(gendata$start),]
 ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
@@ -302,7 +303,7 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name,ini,end))
+  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name[i],ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
