@@ -125,6 +125,7 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 
   # Verify that the region contains variants and has been loaded onto R.
   if (region@n.biallelic.sites==0|is.logical(region)) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
+    print("No variants were identified in this region")
     newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
     return(newrow)
   }
@@ -268,6 +269,17 @@ gendata <- genestable[genestable$chr == sprintf("chr%s",chrom),] # Select genes 
 gendata <- gendata[order(gendata$start),]
 gendata$start <- gendata$start-500 # We chose to sequence 500 bp upstream and downstream [PMID: 21059791
 gendata$end <- gendata$end+500
+# Convert the factors into strings
+gendata[sapply(gendata,is.factor)] <- lapply(gendata[sapply(gendata,is.factor)],as.character)
+
+for(long in which(gendata$end-gendata$start > 10000000)) {
+  print(gendata[long,])
+  cut <- ceiling(mean(c(gendata$start[long],gendata$end[long])))
+  newrow <- list(paste(gendata$name[long],"B",sep=''),gendata$chr[long],cut+1,gendata$end[long])  
+  gendata$name[long] <- paste(gendata$name[long],"A",sep='')
+  gendata$end[long] <- cut
+  gendata <- rbind(gendata,newrow)
+}
 ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
@@ -290,7 +302,7 @@ cat("Maskfile loaded\n")
 init <- Sys.time()
 for (i in 1:ngenes) {
   ini <- gendata$start[i]; end <- gendata$end[i]
-  print(sprintf("Gene number %d: %d - %d",i,ini,end))
+  print(sprintf("Gene number %d (%s): %d - %d",i,gendata$name,ini,end))
   mask.local <- strsplit(as.character(subseq(maskfasta,start=ini,end=end)),"")[[1]]
   pass <- mask.local == "P"
   if (sum(pass) == 0) {
