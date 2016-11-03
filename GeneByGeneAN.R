@@ -328,7 +328,7 @@ Sys.time()-init
 ###################
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
-db.names <- c("S","Pi","DAF","DivsOites","D","K","Unknown")
+db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
 mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
 site.class <- c("fold0","intron","UTR5","UTR3","UTR","inter")
 

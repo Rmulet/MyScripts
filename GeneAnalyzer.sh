@@ -168,10 +168,11 @@ genome_analysis() {
 		fi
 
 		if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
-		        mkdir -p chr$i
+		        mkdir -p $finaldir/chr$i
 		        ln -s $finaldir/GenesTable.RData $finaldir/chr$i
 		        ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i
 		        finaldir="$WORKING/Final/GeneByGene/chr$CHR"
+			cd $finaldir
 		fi
 
 		# MERGE AND ANALYSIS #
