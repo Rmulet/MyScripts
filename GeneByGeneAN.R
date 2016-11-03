@@ -34,7 +34,6 @@ if (args[1] == "-h" | args[1] == "--help") {
 }
 
 nfields <- 91 # 7 for polymorphism + 6*14 for selection
-options(bigmemory.allow.dimnames=TRUE)
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -129,9 +128,6 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos) {
     newrow <- c(rep(0,6),rep(NA,85)) # Empty rows 
     return(newrow)
   }
-
-  require(bigmemory)
-  options(bigmemory.allow.dimnames=TRUE)
 
   ## DEFINE POPULATION/OUTGROUP ##
   

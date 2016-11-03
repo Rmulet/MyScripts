@@ -34,7 +34,7 @@ WINDOW=10000
 MASK="pilot"
 POP="FALSE"
 DL="FALSE"
-CHR=`seq 1 22 X Y` # ALL chromosomes
+CHR="`seq 1 22` X Y" # ALL chromosomes
 
 while [[ $# -gt 1 ]] # next two arguments (window + size)
 
@@ -171,10 +171,17 @@ genome_analysis() {
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
 		grep "chr$i" $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
-		ln -s $gpdat/$gpfile $gpfile;  ln -s $alndat/$alnfile $alnfile # Create symbolic links for the 1000GP and Human-Chimp data
-		ln -s $gpdat/$gpfile.tbi $gpfile.tbi;  ln -s $alndat/$alnfile.tbi $alnfile.tbi # Create symbolic links for the index files
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		VCFmerger.sh $MASK\_mask.chr$i.bed $gpfile $alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
+
+                if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
+                        mkdir -p $finaldir/chr$i
+                        ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i # Link to the GFF file
+			ln -s $finaldir/$MASK\_mask.chr$i.bed $finaldir/chr$i # Link to the mask file
+                        finaldir="$WORKING/Final/chr$CHR"
+			cd $finaldir
+                fi
+
+		VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
 
 		if [[ $? -ne 0 ]]; then # Stop the execution of the script if VCFmerger fails
 			echo 'Error: VCFmerger.sh failed!'

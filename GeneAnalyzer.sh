@@ -93,13 +93,6 @@ alnraw="$WORKING/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromo
 alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
 finaldir="$WORKING/Final/GeneByGene"
 
-if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
-	mkdir -p chr$CHR
-	ln -s $finaldir/GenesTable.RData $finaldir/chr$CHR
-	ln -s $finaldir/gffseq_chr$CHR.RData $finaldir/chr$CHR
-	finaldir="$WORKING/Final/GeneByGene/chr$CHR"
-fi
-
 # maskdir="$gpdat/Masks/FASTA"
 
 ## DOWNLOAD FILES [OPTIONAL]
@@ -172,6 +165,13 @@ genome_analysis() {
 		if [ ! -e "gffseq_chr$i.RData" ]; then
 			cp $alndat/chr$i.fa $finaldir # Copy the FASTA sequence of the chromosome
 			GFFtoFASTA8.R chr$i.fa $i # Puts the GFF annotation in a sequence
+		fi
+
+		if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
+		        mkdir -p chr$i
+		        ln -s $finaldir/GenesTable.RData $finaldir/chr$i
+		        ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i
+		        finaldir="$WORKING/Final/GeneByGene/chr$CHR"
 		fi
 
 		# MERGE AND ANALYSIS #

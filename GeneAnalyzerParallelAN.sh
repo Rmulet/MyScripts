@@ -196,7 +196,8 @@ export -f genome_analysis
 
 if [ "$POP" == "FALSE" ]; then 	
 #	genome_analysis $CHR
-	parallel --gnu -j5 genome_analysis ::: `seq 1 3`
+#	parallel --gnu -j5 genome_analysis ::: `seq 1 3`
+	echo $CHR | xargs -P4 -I genome_analysis {}
 elif [ "$POP" == "5" ]; then
 	# Super-populations (5) are parsed from PopulationIndividualsList.panel expected to be at $gpdat/Others
 	superpops=$(cd $gpdat/Others && cut -f3 PopulationIndividualsList.panel | sort -u | grep -v "super_pop" | tr '\n' ' ')
