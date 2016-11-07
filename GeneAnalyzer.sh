@@ -38,6 +38,7 @@ MASK="pilot"
 POP="FALSE"
 DL="FALSE"
 CHR=`seq 1 22` # ALL chromosomes
+DB=Gene
 
 while [[ $# -gt 1 ]]
 do
@@ -137,10 +138,12 @@ genome_analysis() {
 			popname=$2
 			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 			echo "Extracting the individuals of the selected population: $popname"
-			bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+			if [ ! -e "chr$i$popname.vcf.gz" ]; then
+				bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+				tabix -p vcf chr$i$popname.vcf.gz
+			fi	
 			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
 			echo $gpfile	
-			tabix -p vcf $gpfile
 		fi
 
 		 # DIVERGENCE #
@@ -179,8 +182,8 @@ genome_analysis() {
 		echo -e "Preparing the accessibility mask for chr$i"
 		maskfile=$gpdat/Masks/FASTA/$(cd $gpdat/Masks/FASTA && ls -d *chr$i.$MASK*fasta*) # Depends on the chosen criteria. Underscore must be escaped.
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		echo $gpfile $alnfile $maskfile $i
-		GeneByGene.R $gpdat/$gpfile $alndat/$alnfile $maskfile $i
+		echo $gpfile $alnfile ${maskfile##/*} $i GeneData_chr$i $POP  # GPFILE ALNFILE MASK CHROM DB POP
+		GeneByGene.R $gpdat/$gpfile $alndat/$alnfile $maskfile $i GeneData_chr$i $popname
 		echo -e "Analysis of chr$i complete.\n"		
 	done
 }

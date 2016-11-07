@@ -1,5 +1,4 @@
 #!/usr/bin/Rscript
-
 #setwd("~/Documents/2_GenomicsData/Final")
 # filename <- "merge.3.vcf.gz"
 #filename <- "merge.vcf.gz"; ini <- 31768081-1; end <- 31899603-1; chrom <- "22"; wsize <- 10000; MK <- TRUE; ref.chr="chr22.fa"; window = 7
@@ -35,8 +34,9 @@ ini <- as.numeric(args[3])-1; end <- as.numeric(args[4])-1 # Although the mask f
 # comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not 
 # included. START matches the position in the FASTA, but PopGenome tends to add 1; therefore, we remove it
 wsize <- as.numeric(args[5]) # Window size
-db <- args[6] # Name of the database [Genomics]
+db <- args[6] # Name of the data table [Genomics]
 MK <- args[7] # Calculate MKT
+pop <- args[8] # Population name
 
 # (1) We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # (2) The chromosome identifier in the GFF has to be identical to the identifier used in the VCF file
@@ -53,6 +53,7 @@ region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknow
 # Verify that the region contains variants and has been loaded onto R.
 if (region@n.biallelic.sites==0|is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
   print("This region does not contain any variants")
+}
 
 load(sprintf("gffseq_chr%s.RData",chrom)) # Annotation data from GFFtoFASTA
 
@@ -255,8 +256,9 @@ measures <- function(object) {
     print(newrow)
     tabsum[window,] <- newrow
   }
-  return(tabsum)
+  return(tabsum) 
 }
+
 
 ## INTEGRATION OF NEUTRALITY, DIVERSITY AND DIVERGENCE METRICS ##
 
@@ -277,10 +279,10 @@ if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F
 # a) Coordinates are converted to BED format: 0-based, subtract 1 from start column.
 # b) Chromosome is expressed in "chrNN" format.
 windows[,1] <- windows[,1]-1
-export <- cbind(chr=rep(paste(c("chr",chrom),collapse=""),NROW(windows)),windows,regiondata)
+export <- cbind(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),NROW(windows)),windows,regiondata)
 
-write.table(export,file=sprintf("WindowData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F,append=TRUE,
-col.names=!file.exists(sprintf("WindowData_chr%s.tab",chrom))) # Column names written if file does not exist
+write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
+col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist
 
 if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
 

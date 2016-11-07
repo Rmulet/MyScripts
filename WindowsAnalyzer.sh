@@ -73,7 +73,7 @@ do
 shift
 done
 
-# Redirect stdout ( > ) into a named pipe ( >() ) running "tee".
+# Print stoud on the screen and keep a copy in a log file
 rm -f WindowsAnalyzer.log
 exec > >(tee -a WindowsAnalyzer.log) 2>&1
 
@@ -140,10 +140,12 @@ genome_analysis() {
 			echo "1"
 			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
 			echo "Extracting the individuals of the selected population: $popname"
-			$BCFTOOLS/bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+			if [ ! -e "chr$i$popname.vcf.gz" ]; then			
+				$BCFTOOLS/bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
+				tabix -p vcf chr$i$popname.vcf.gz
+			fi
 			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
 			echo $gpfile	
-			tabix -p vcf $gpfile
 		fi
 
 		 # DIVERGENCE #
@@ -180,9 +182,13 @@ genome_analysis() {
                         finaldir="$WORKING/Final/chr$CHR"
 			cd $finaldir
                 fi
-
-		VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db Genomics$i$popname # Merges and analyzes variation data
-
+		
+		if [[ -n $popname ]]; then	
+		VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db WindowsData_chr$i -pop $popname # Merges and analyzes variation data
+		else 
+                VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db WindowsData_chr$i
+		fi	
+	
 		if [[ $? -ne 0 ]]; then # Stop the execution of the script if VCFmerger fails
 			echo 'Error: VCFmerger.sh failed!'
 			exit -1

@@ -10,13 +10,11 @@
 # UPDATE 4: Memory limitations due to excessive size of bialhuman and bial.
 # UPDATE 5: Correction in the way m/m0 are calculated. 
 # UPDATE 6: File naming updated to allow parallelization.
+# UPDATE 7: Incorporation of the 'db' and 'pop' arguments for better organization of the results.
 
 suppressMessages(library(PopGenome))
 suppressMessages(library(GenomicRanges))
 suppressMessages(library(stringr))
-
-# zz <- file("Warnings.dat","w")
-# sink("Warnings.dat",append=TRUE)
 
 #############################
 ## IMPORT AND PREPARE DATA ##
@@ -27,10 +25,13 @@ gpfile <- args[1] # 1000GP data
 alnfile <- args[2] # Chimp-Human alignment
 maskfile <- args[3] 
 chrom <- args[4]
+db <- args[5] # Name of the table where data are stored
+pop <- args[6] # Population name (ALL by default)
+if (!exists("pop")) { pop = "ALL" }
 
 if (args[1] == "-h" | args[1] == "--help") {
-  cat("\nGFFtoFASTA - A script that creates a FASTA-like file with numeric codes identifying each feature.\n")
-  cat("\nUsage: GFFtoFASTA.R [GP FILE] [ALN FILE] [MASKFILE]\n\n")
+  cat("\nGeneByGene.R - A script that calculates population genetics metrics for individual genes.\n")
+  cat("\nUsage: GeneByGene.R [GP FILE] [ALN FILE] [MASKFILE] [CHROM] [DB] \n\n")
   quit()
 }
 
@@ -119,7 +120,7 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
-
+print(filename)
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
 
@@ -331,7 +332,7 @@ db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
 mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
 site.class <- c("fold0","intron","UTR5","UTR3","inter")
 
-for (class in site.class) {
+for (class in site.class) { # Create the names of all the columns
   db.names <- c(db.names,unname(sapply(mkt.names,function(x){paste(c(x,"_",class),collapse="")})))
 }
 colnames(tabsum) <- db.names
@@ -350,12 +351,14 @@ colnames(tabsum) <- db.names
 # a) Coordinates are converted to BED format: 0-based, subtract 1 from start column.
 # b) Chromosome is expressed in "chrNN" format.
 
-export <- cbind(gendata,tabsum)
-export.name <- "GenesDB"
+export <- data.frame(population=pop,gendata,tabsum)
+
+print("Export successful")
 
 # EXPORT DATA TABLE
-save(export,file=sprintf("GeneData_chr%s.RData",chrom))
-write.table(export,file=sprintf("GeneData_chr%s.tab",chrom),quote=FALSE,sep="\t",row.names=F)
+write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE,
+col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist
+save(export,file=paste(db,".RData",sep=""))
 
 if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
   
@@ -365,17 +368,17 @@ if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
   con <- dbConnect(RMySQL::MySQL(),
                    user="root", password="RM333",
                    dbname="PEGH", host="localhost")
-  first <- !dbExistsTable(con,export.name)
+  first <- !dbExistsTable(con,db)
   
-  t <- try(dbWriteTable(con,value=export,name=export.name,row.names=F,append=T))
+  t <- try(dbWriteTable(con,value=export,name=db,row.names=F,append=T))
   
   if ("try-error" %in% class(t)) {
     save(export,file=sprintf("failedexport_chr%s.RData",chrom))
   }
   
   if (first == TRUE) {# Remove if we want to concatenate various chromosomes
-    dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",export.name))
-    dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (name);",export.name))
+    dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN name name VARCHAR(30);",db))
+    dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (name);",db))
   }
   on.exit(dbDisconnect(con))
 }

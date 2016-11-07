@@ -18,6 +18,7 @@ display_usage() {
 	echo -e " -w, --window \t Specifies the size of the window to be analyzed [1000]"
 	echo -e " -db, --database \t Specifies the name of the data table where the results will be stored [Genomics]"
 	echo -e " -mkt, --mktest \t Determines whether the MKT will be conducted [TRUE for windows >= 10,000]"
+	echo -e " -pop, --population \t Specifies the name of the population under analysis [ALL]"
 	} 
 
 #####################################
@@ -73,6 +74,9 @@ fi
 WINDOW=1000
 DB="GenomicsMKT"
 MKT="FALSE"
+POP="ALL"
+
+echo $POP
 
 while [[ $# > 0 ]]
 do
@@ -98,6 +102,10 @@ do
 		;;
 		-mkt|--mktest)
 		MKT="$2" # $1 has the name, $2 the value
+		shift 2
+		;;
+		-pop|--population)
+		POP="$2"
 		shift 2
 		;;
 		*) # No more options
@@ -141,7 +149,7 @@ do
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
 	echo merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT
-	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT # Avoid the message visualization!! 
+	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	if [[ $? -ne 0 ]]; then
 	        echo 'Error: VCFAnalysis.R failed!'
