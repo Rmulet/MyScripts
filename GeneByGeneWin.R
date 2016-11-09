@@ -1,7 +1,8 @@
 #!/usr/bin/Rscript
 
-# setwd("F:/Internship/2_GenomicsData/Final/GeneByGene")
+# setwd("D:/Final/GeneByGene")
 # gpfile <- "chr10_gp.vcf.gz" ; alnfile <- "chr10_aln.vcf.gz"; chrom <- "10" ; maskfile <- "20140520.chr10.pilot_mask.fasta.gz"
+# ini <- 23727698 ; end <- 23731810; tid <- "10"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
 # are missing via vector.
@@ -75,9 +76,7 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
     fisher.test(contingency.std)$p.value
   } else {NA}
   
-  # ADAPTED:
-  
-  # 1) Use four-fold degenerated sites 2) Remove sites according to DAF
+  # CORRECTION: Remove sites according to DAF
   
   neuMAF <- as.vector(na.omit(MAF[bial.class==neu & poly.sites==TRUE]))
   selMAF <- as.vector(na.omit(MAF[bial.class==sel & poly.sites==TRUE]))
@@ -111,6 +110,28 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
   d <- 1 - (f+b)
   
+  # MKT BASED ON PI: Calculate pi for selected and neutral classes
+  
+  # We first calculate x (to avoid confusion with k for divergence), i.e. the number
+  # of differences
+  freqs.neu <- freqs[,bial.class[poly.sites]==neu]
+  x.neu <- sum(freqs.neu[1,]*freqs.neu[2,]) 
+  freqs.sel <- freqs[,bial.class[poly.sites]==sel]
+  x.sel <- sum(freqs.sel[1,]*freqs.sel[2,])
+  Pi.neu <- Pi(x.neu,m.neu,n)
+  Pi.sel <- Pi(x.sel,m.sel,n)
+  
+  # Remove unknowns from m.sel and m.neu?
+  K.neu <- Dneu/m.neu 
+  K.sel <- Dsel/m.sel
+  
+  alpha.pi <- 1-(Pi.sel/Pi.neu)*(K.neu/K.sel)
+  contingency <- matrix(c(Pi.sel,Pi.neu,K.sel,K.neu),c(2,2))
+  test.cor <- if(!is.na(sum(contingency))){
+    if(sum(contingency)>0){fisher.test(contingency)$p.value}
+  } else {NA}
+  
+  
   return(c(Psel,Pneu,Dsel,Dneu,m.neu,m.sel,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
 }
 
@@ -120,7 +141,7 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA don't need to be loaded.
-  region <- readVCF("merge10.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
+  region <- readVCF("a.vcf.gz",numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   
   # If readVCF fails, region=FALSE(logical). If no variants, region=NULL
   if (region@n.biallelic.sites==0|is.logical(region)) {
@@ -203,7 +224,9 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
     k <- 0
   } else {
     S <- ncol(bial[1:n,poly.sites,drop=F]) # Number of variants
+    #do.call(cbind,apply(bial[1:n,,drop=F],2,table)
     freqs <- apply(bial[1:n,poly.sites,drop=F],2,table)
+    #freqs.pol <- freqs[,poly.sites]
     k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
   }
   
@@ -232,11 +255,11 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
   
+  bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
   mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq) # sel = 0-fold; neu= 4-fold
   mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq) # sel = exon; neu= 4-fold
   mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq) # sel = 5-UTR; neu= 4-fold
   mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4,gffseq) # sel = 3-UTR; neu= 4-fold
-  bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
   mkt.inter.4fold <-  mkt.extended(sel=1,neu=4,gffseq) # sel = exon; neu= 4-fold
   
   cat("MKT performed. Data will be stored in a new row\n")
@@ -364,3 +387,4 @@ if (first == TRUE) {# Remove if we want to concatenate various chromosomes
 
 on.exit(dbDisconnect(con))
 closeAllConnections()
+  
