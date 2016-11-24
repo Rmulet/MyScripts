@@ -92,15 +92,15 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   
   alpha.cor <- 1-(Psel.neutral/Pneu)*(Dneu/Dsel)
   contingency <- matrix(c(Psel.neutral,Pneu,Dsel,Dneu),c(2,2))
-  test.cor <- if(!is.na(sum(contingency))){
+    test.cor <- if(!is.na(sum(contingency))){
     if(sum(contingency)>0){fisher.test(contingency)$p.value}
   } else {NA}
   
   # OTHER ESTIMATORS:
   
   # To fully implement extended MKT, we need ms/mns, that is, the number of sites
-  # of each class. Doing that would require modifying the 'set.synnonsyn2' function
-  # to obtain all codons and check fold in every position (0,1,2)
+  # of each class. M.neu and m.sel should consider the existence of unknown sites
+  # where the other species lacks a nucleotide.
   
   m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
   m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
@@ -127,12 +127,12 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   
   alpha.pi <- 1-(Pi.sel/Pi.neu)*(K.neu/K.sel)
   contingency <- matrix(c(Pi.sel,Pi.neu,K.sel,K.neu),c(2,2))
-  test.cor <- if(!is.na(sum(contingency))){
+  test.pi <- if(!is.na(sum(contingency))){
     if(sum(contingency)>0){fisher.test(contingency)$p.value}
   } else {NA}
   
   
-  return(c(Psel,Pneu,Dsel,Dneu,m.neu,m.sel,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
+  return(c(Psel,Pneu,Dsel,Dneu,alpha,test,m.sel,m.neu,Pi.sel,Pi.neu,K.sel,K.neu,alpha.pi,test.pi,Psel.neutral,alpha.cor,DoS,f,b,y,d))
 }
 
 #################################
@@ -295,9 +295,9 @@ gendata$end <- gendata$end+500
 ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
-nfields <- 87 # Number of columns: 7 for polymorphism + 5*16 for selection
+nfields <- 117 # Number of columns: 7 for polymorphism + 5*22 for selection
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
-colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
+colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","m.sel","m.neu","Pi.sel","Pi.neu","K.sel","K.neu","alpha.pi","test.pi","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
 
 ## PREANALYSIS: GFF AND MASK:
 
@@ -340,7 +340,7 @@ Sys.time()-init
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
 db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
-mkt.names <- c("Psel","Pneu","Dsel","Dneu","m.neu","m.sel","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
+mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","m_neu","m_sel","Pi_sel","Pi_neu","K_sel","K_neu","alpha_pi","test_pi","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
 site.class <- c("fold0","intron","UTR5","UTR3","inter")
 
 for (class in site.class) {
