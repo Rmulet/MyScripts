@@ -27,7 +27,7 @@ maskfile <- args[3]
 chrom <- args[4]
 db <- args[5] # Name of the table where data are stored
 pop <- args[6] # Population name (ALL by default)
-if (!exists("pop")) { pop = "ALL" }
+if (!exists("pop")||is.na(pop)) { pop = "ALL" }
 
 if (args[1] == "-h" | args[1] == "--help") {
   cat("\nGeneByGene.R - A script that calculates population genetics metrics for individual genes.\n")
@@ -35,7 +35,8 @@ if (args[1] == "-h" | args[1] == "--help") {
   quit()
 }
 
-nfields <- 87 # Number of columns: 7 for polymorphism + 5*16 for selection
+print(pop)
+nfields <- 117 # Number of columns: 7 for polymorphism + 5*22 for selection
 
 ##########################
 ## FUNCTION DECLARATION ##
@@ -59,11 +60,12 @@ Theta <- function(S,m,n) { # S=Segregating sites; m=total sites; n=number of sam
 
 ## MKT CALCULATION ##
 
-mkt.extended <- function (sel=0,neu=4,gffseq) {
+mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
   
   # Divtotal, poly.sites and bial.class are in Global to pass them
   
-  # STANDARD: Same result as MKT function if done with all syn.
+  # STANDARD: Using counts of polymorphism and divergence for sel/neu
+
   Pneu <- sum(poly.sites[bial.class==neu],na.rm=TRUE) # Psel + Dsel < total sel because of sites that are polym and divtotal
   Psel <- sum(poly.sites[bial.class==sel],na.rm=TRUE)
   Dneu <- sum(divtotal[bial.class==neu],na.rm=TRUE)
@@ -76,9 +78,9 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
     fisher.test(contingency.std)$p.value
   } else {NA}
   
-  # ADAPTED:
+  # EXTENDED: Adjusted for the weakly deleterious fraction
   
-  # 1) Use four-fold degenerated sites 2) Remove sites according to DAF
+  # 1) Corrected alpha
   
   neuMAF <- as.vector(na.omit(MAF[bial.class==neu & poly.sites==TRUE]))
   selMAF <- as.vector(na.omit(MAF[bial.class==sel & poly.sites==TRUE]))
@@ -93,27 +95,48 @@ mkt.extended <- function (sel=0,neu=4,gffseq) {
   Psel.weak <- Psel.less5 - Psel.neutral.less5
   
   alpha.cor <- 1-(Psel.neutral/Pneu)*(Dneu/Dsel)
-  contingency <- matrix(c(Psel.neutral,Pneu,Dsel,Dneu),c(2,2))
-  test.cor <- if(!is.na(sum(contingency))){
-    if(sum(contingency)>0){fisher.test(contingency)$p.value}
+  contingency.cor <- matrix(c(Psel.neutral,Pneu,Dsel,Dneu),c(2,2))
+  test.cor <- if(!is.na(sum(contingency.cor))){
+   fisher.test(contingency.cor)$p.value
   } else {NA}
   
-  # OTHER ESTIMATORS:
-  
+  # 2) Oher estimators in the extended framework 
+
   # To implement extended MKT and calculate K0/1, we need m0/m1, that is, the number of sites 
   # of each class. This can be obtained from the gffseq vector.
   
-  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)
-  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)
-  if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))}
+  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)-sum(bial.class[bial.un]==neu) # Subtract unknowns in the output
+  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)-sum(bial.class[bial.un]==sel) # Subtract unknowns in the output
+  if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))} 
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
   b <- (Psel.weak/Pneu)*(m.neu/m.sel)
   y <- (Psel/Pneu-Dsel/Dneu)*(m.neu/m.sel)
   d <- 1 - (f+b)
+
+  # MKT BASED ON PI: Calculate pi for selected and neutral classes
   
-  return(c(Psel,Pneu,Dsel,Dneu,m.neu,m.sel,alpha,test,Psel.neutral,alpha.cor,test.cor,DoS,f,b,y,d))
-}
+  # We first calculate x (to avoid confusion with k for divergence), i.e. the number
+  # of differences
+  freqs.neu <- freqs[,bial.class[poly.sites]==neu,drop=F]
+  x.neu <- sum(freqs.neu[1,]*freqs.neu[2,]) 
+  freqs.sel <- freqs[,bial.class[poly.sites]==sel,drop=F]
+  x.sel <- sum(freqs.sel[1,]*freqs.sel[2,])
+  Pi.neu <- Pi(x.neu,m.neu,n)
+  Pi.sel <- Pi(x.sel,m.sel,n)
+  
+  # Remove unknowns from m.sel and m.neu?
+  K.neu <- Dneu/m.neu 
+  K.sel <- Dsel/m.sel
+  
+  alpha.pi <- 1-(Pi.sel/Pi.neu)*(K.neu/K.sel)
+  contingency.pi <- matrix(c(Pi.sel,Pi.neu,K.sel,K.neu),c(2,2))
+  test.pi <- if(!is.na(sum(contingency.pi))){
+    fisher.test(contingency.pi)$p.value
+  } else {NA}
+  
+  return(c(Psel,Pneu,Dsel,Dneu,alpha,test,m.sel,m.neu,Pi.sel,Pi.neu,K.sel,K.neu,alpha.pi,test.pi,Psel.neutral,alpha.cor,test,DoS,f,b,y,d))
+ }
 
 #################################
 ## POPGENOME ANALYSIS FUNCTION ##  
@@ -123,11 +146,11 @@ popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
 print(filename)
   region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
-
+  print(region@n.biallelic.sites)	
   # Verify that the region contains variants and has been loaded onto R.
-  if (region@n.biallelic.sites==0|is.logical(region)) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
+  if (is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
     print("No variants were identified in this region")
-    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,111)) # Empty rows
     return(newrow)
   }
   
@@ -150,7 +173,7 @@ print(filename)
   ac.bial <- as.numeric(colnames(bial)) %in% ac.pos # Accessible positions in biallelic matrix
   bial <- bial[,ac.bial,drop=F] # Biallelic matrix of accessible variants
   if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-    newrow <- c(rep(0,6),rep(NA,81)) # Empty rows
+    newrow <- c(rep(0,6),rep(NA,111)) # Empty rows
     return(newrow)
   }
   wsize <- end-ini+1 # GFF coordinates, 1-based
@@ -203,7 +226,7 @@ print(filename)
     k <- 0
   } else {
     S <- ncol(bial[1:n,poly.sites,drop=F]) # Number of variants
-    freqs <- apply(bial[1:n,poly.sites,drop=F],2,table)
+    freqs <<- apply(bial[1:n,poly.sites,drop=F],2,table)
     k <- sum(freqs[1,]*freqs[2,]) # Note that k and K are different!
   }
   
@@ -212,7 +235,8 @@ print(filename)
   ## DIVERGENCE ##
   
   # COUNT THE NUMBER OF UNKNOWNS IN THE OUTGROUP:
-  unknowns <- sum(is.nan(bial[total,])) # Displayed as NaN in the biallelic matrix
+  bial.un <<- is.nan(bial[total,]) # Position of unknowns in the bial matrix (NaN)
+  unknowns <- sum(is.nan(bial[total,])) # Number of unknowns
   
   # COUNT THE NUMBER OF DIVERGENCE SITES:
   divtotal <<- bial[total,] == 1 & !poly.sites # 1/1 in the outgroup and excluding polymorphic (cannot be counted for divergence)
@@ -232,12 +256,12 @@ print(filename)
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
   
-  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq) # sel = 0-fold; neu= 4-fold
-  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq) # sel = exon; neu= 4-fold
-  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq) # sel = 5-UTR; neu= 4-fold
-  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4,gffseq) # sel = 3-UTR; neu= 4-fold
   bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
-  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4,gffseq) # sel = exon; neu= 4-fold
+  mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq,unknowns,n) # sel = 0-fold; neu= 4-fold
+  mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq,unknowns,n) # sel = exon; neu= 4-fold
+  mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq,unknowns,n) # sel = 5-UTR; neu= 4-fold
+  mkt.3UTR.4fold <-  mkt.extended(sel=3,neu=4,gffseq,unknowns,n) # sel = 3-UTR; neu= 4-fold
+  mkt.inter.4fold <-  mkt.extended(sel=1,neu=4,gffseq,unknowns,n) # sel = exon; neu= 4-fold
   
   cat("MKT performed. Data will be stored in a new row\n")
   
@@ -286,7 +310,15 @@ ngenes <- nrow(gendata)
 
 # TABLE WITH DATA:
 tabsum <- as.data.frame(matrix(numeric(ngenes*nfields),ncol=nfields,nrow=ngenes))
-colnames <- paste(c("S","Pi","DAF","Divsites","D","K","Unknown"),rep(c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel.neutral","alpha.cor","test.cor","DoS","f","b","y","d"),6))
+db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
+mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","m_sel","m_neu","Pi_sel","Pi_neu","K_sel","K_neu","alpha_pi","test_pi","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
+site.class <- c("fold0","intron","UTR5","UTR3","inter")
+
+for (class in site.class) { # Create the names of all the columns
+  db.names <- c(db.names,unname(sapply(mkt.names,function(x){paste(c(x,"_",class),collapse="")})))
+}
+
+colnames(tabsum) <- db.names
 
 ## PREANALYSIS: GFF AND MASK:
 
@@ -323,29 +355,17 @@ for (i in 1:ngenes) {
 }
 Sys.time()-init
 
-###################
-## FINAL TOUCHES ##
-###################
+########################################
+## FINAL TOUCHES AND DATA EXPORTATION ##
+########################################
 
 # tabsum[,-3] <- apply(tabsum[,-3],2,as.numeric) # Convert all but DAF to numeric
-db.names <- c("S","Pi","DAF","Divsites","D","K","Unknown")
-mkt.names <- c("Psel","Pneu","Dsel","Dneu","alpha","test","Psel_neutral","alpha_cor","test_cor","DoS","f","b","y","d")
-site.class <- c("fold0","intron","UTR5","UTR3","inter")
-
-for (class in site.class) { # Create the names of all the columns
-  db.names <- c(db.names,unname(sapply(mkt.names,function(x){paste(c(x,"_",class),collapse="")})))
-}
-colnames(tabsum) <- db.names
 
 #library(biomaRt)
 #mart <- useMart(host="www.ensembl.org",biomart="ENSEMBL_MART_ENSEMBL")
 #atts <- c("entrezgene","hgnc_symbol") # Retrieve the HUGO-approved gene symbol
 #gene.names <- genes$gene_id
-#annotation.h <- getBM(attributes=atts,uniqueRows=FALSE,filters="entrezgene",values=gene.names,mart=mart)
-
-######################
-## DATA EXPORTATION ##
-######################
+#annotation.h <- getBM(attributes=atts,uniqueRows=FALSE,filters="entrezgene",values=gene.names,mart=
 
 # We add the chromosome info and the coordinates. For convenience in the next steps:
 # a) Coordinates are converted to BED format: 0-based, subtract 1 from start column.
@@ -353,12 +373,12 @@ colnames(tabsum) <- db.names
 
 export <- data.frame(population=pop,gendata,tabsum)
 
-print("Export successful")
-
 # EXPORT DATA TABLE
 write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE,
 col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist
 save(export,file=paste(db,".RData",sep=""))
+
+print("Export successful")
 
 if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
   
