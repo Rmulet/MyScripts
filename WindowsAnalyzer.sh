@@ -128,9 +128,10 @@ genome_analysis() {
 			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
 			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf chr$i.temp.vcf f $gpfile
-		elif [ "$i" == "Y" ]; then
+		elif [[ "$i" == "Y" ]] && [[ $(zcat $gpfile | grep -v '#' | head -1 | awk '{if ($10 ~ /[0-4.]\|[0-4.]/) print "DIPLOID"; else print "HAPLOID"}') == "HAPLOID" ]]; then
 			echo -e "Converting chromosome Y to pseudo-diploid"
-			zcat $gpfile | perl -p -e 's/\t([01.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
+			zcat $gpfile | awk '$5 !~ "<CN"' |  perl -pe 's/\t([0-4.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
+			mv $gpfile chr$i.haploid_gp.vcf.gz
 			bgzip chr$i.temp.vcf; mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile
 		fi
@@ -144,7 +145,7 @@ genome_analysis() {
 				$BCFTOOLS/bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
 				tabix -p vcf chr$i$popname.vcf.gz
 			fi
-			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the 
+			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the file generated for that population
 			echo $gpfile	
 		fi
 

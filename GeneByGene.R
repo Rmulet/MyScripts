@@ -66,10 +66,10 @@ mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
   
   # STANDARD: Using counts of polymorphism and divergence for sel/neu
 
-  Pneu <- sum(poly.sites[bial.class==neu],na.rm=TRUE) # Psel + Dsel < total sel because of sites that are polym and divtotal
-  Psel <- sum(poly.sites[bial.class==sel],na.rm=TRUE)
-  Dneu <- sum(divtotal[bial.class==neu],na.rm=TRUE)
-  Dsel <- sum(divtotal[bial.class==sel],na.rm=TRUE)
+  Pneu <- sum(poly.sites[bial.class==neu & !div.sites],na.rm=TRUE) # We exclude those sites that are polymorphic and divergent for MKT
+  Psel <- sum(poly.sites[bial.class==sel & !div.sites],na.rm=TRUE)
+  Dneu <- sum(div.only[bial.class==neu],na.rm=TRUE)
+  Dsel <- sum(div.only[bial.class==sel],na.rm=TRUE)
   NI <- (Psel/Pneu)/(Dsel/Dneu)
   alpha <- 1-NI
   DoS <- Dsel/(Dsel+Dneu)-Psel/(Psel+Pneu) # Direction of selection
@@ -78,12 +78,17 @@ mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
     fisher.test(contingency.std)$p.value
   } else {NA}
   
+  if(sum(poly.sites[bial.class==neu],na.rm=TRUE) != Pneu) {
+	print(c("sel",sel,Pneu,Psel,Dneu,Dsel,NI))
+	print(c("neu only",sum(poly.sites[bial.class==neu],na.rm=TRUE)))
+  }
+
   # EXTENDED: Adjusted for the weakly deleterious fraction
   
   # 1) Corrected alpha
   
-  neuMAF <- as.vector(na.omit(MAF[bial.class==neu & poly.sites==TRUE]))
-  selMAF <- as.vector(na.omit(MAF[bial.class==sel & poly.sites==TRUE]))
+  neuMAF <- as.vector(na.omit(MAF[bial.class==neu & poly.sites==TRUE & div.sites==FALSE]))
+  selMAF <- as.vector(na.omit(MAF[bial.class==sel & poly.sites==TRUE & div.sites==FALSE]))
   
   Pneu.less5 <- sum(neuMAF<0.05) # P0 MAF less than 5%
   Pneu.more5 <- sum(neuMAF>0.05) # P0 MAF more than 5% 
@@ -100,13 +105,13 @@ mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
    fisher.test(contingency.cor)$p.value
   } else {NA}
   
-  # 2) Oher estimators in the extended framework 
+  # 2) Other estimators in the extended framework 
 
   # To implement extended MKT and calculate K0/1, we need m0/m1, that is, the number of sites 
   # of each class. This can be obtained from the gffseq vector.
   
-  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)-sum(bial.class[bial.un]==neu) # Subtract unknowns in the output
-  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)-sum(bial.class[bial.un]==sel) # Subtract unknowns in the output
+  m.neu <- sum(gffseq[ac.pos] == neu,na.rm=T)-sum(bial.class[miss.outgroup & misshuman]==neu,na.rm=T) # Subtract unknowns
+  m.sel <- sum(gffseq[ac.pos] == sel,na.rm=T)-sum(bial.class[miss.outgroup & misshuman]==sel,na.rm=T) # Subtract unknowns
   if (sel == 1) {m.sel <- sum(is.na(gffseq[ac.pos]))} 
   
   f <- (m.neu*Psel.neutral)/(m.sel*Pneu) # Neutral sites
@@ -115,12 +120,13 @@ mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
   d <- 1 - (f+b)
 
   # MKT BASED ON PI: Calculate pi for selected and neutral classes
-  
-  # We first calculate x (to avoid confusion with k for divergence), i.e. the number
-  # of differences
-  freqs.neu <- freqs[,bial.class[poly.sites]==neu,drop=F]
+
+  # We first calculate x (to avoid confusion with k for divergence), i.e. the sum of the number
+  # of differences per position
+
+  freqs.neu <- freqs[,bial.class[poly.sites & !div.sites]==neu,drop=F] # Only polymorphic, not divergent
   x.neu <- sum(freqs.neu[1,]*freqs.neu[2,]) 
-  freqs.sel <- freqs[,bial.class[poly.sites]==sel,drop=F]
+  freqs.sel <- freqs[,bial.class[poly.sites & !div.sites]==sel,drop=F] # Only polymorpgic, not divergent
   x.sel <- sum(freqs.sel[1,]*freqs.sel[2,])
   Pi.neu <- Pi(x.neu,m.neu,n)
   Pi.sel <- Pi(x.sel,m.sel,n)
@@ -148,7 +154,7 @@ print(filename)
   # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
   print(region@n.biallelic.sites)	
   # Verify that the region contains variants and has been loaded onto R.
-  if (is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
+  if (!exists("region")||is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
     print("No variants were identified in this region")
     newrow <- c(rep(0,6),rep(NA,111)) # Empty rows
     return(newrow)
@@ -180,7 +186,7 @@ print(filename)
   
   # Bial contains only positions that are found in the accessibility mask
   
-  misshuman <- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
+  misshuman <<- colSums(is.na(bial[1:n,,drop=F]))>0 # Sites missing in humans (e.g. structural variants)
   poly.sites <<- apply(bial[1:n,,drop=F],2,sum)>0 & !misshuman # Sites polymorphic in humans w/o missing
   
   cat("\nBiallelic matrix filtered\n")
@@ -235,15 +241,16 @@ print(filename)
   ## DIVERGENCE ##
   
   # COUNT THE NUMBER OF UNKNOWNS IN THE OUTGROUP:
-  bial.un <<- is.nan(bial[total,]) # Position of unknowns in the bial matrix (NaN)
-  unknowns <- sum(is.nan(bial[total,])) # Number of unknowns
+  miss.outgroup <<- is.nan(bial[total,]) # Position of outgroup unknowns in the bial matrix (NaN)
+  unknowns <- sum(miss.outgroup) # Number of outgroup unknowns
   
   # COUNT THE NUMBER OF DIVERGENCE SITES:
-  divtotal <<- bial[total,] == 1 & !poly.sites # 1/1 in the outgroup and excluding polymorphic (cannot be counted for divergence)
-  divsites <- sum (divtotal,na.rm=T) # Number of divergent sites
+  div.sites <<- bial[total,] == 1 & !miss.outgroup # 1/1 in the outgroup w/o unknowns (should not happen because we have 1 genome)
+  div.only <<- div.sites & !poly.sites # 1/1 in the outgroup and excluding polymorphic (cannot be counted for divergence)
+  div.number <- sum (div.only,na.rm=T) # Number of divergent sites
   # CALCULATE D AND K:
   mout <- m - unknowns
-  D <- round(divsites/mout,7) # Observed divergence: Proportion of sites with divergent nucleotides
+  D <- round(div.number/mout,7) # Observed divergence: Proportion of sites with divergent nucleotides
   K <- round(-3/4*log(1-4/3*D),7) # Real divergence: Jukes and Cantor model to account for multiple hits
   
   cat("Divergence and polymorphism calculated\n")
@@ -252,11 +259,10 @@ print(filename)
   
   bial.sites <- as.numeric(colnames(bial)) # Biallelic sites
   bial.class <<- gffseq[bial.sites] # GFF feature in each site. Equivalent to the former 'syn'
-  # syn <- region@region.data@synonymous[[1]][ac.bial] # Contains syn and non-syn positions [accessible]
   
   # STORING MKT RESULTS FOR DIFFERENT FUNCTIONAL CLASSES:
   
-  bial.class[is.na(bial.class)] <- 1 # New code for all intergenic (instead of NA)
+  bial.class[is.na(bial.class)] <<- 1 # New code for all intergenic (instead of NA)
   mkt.0fold.4fold <- mkt.extended(sel=0,neu=4,gffseq,unknowns,n) # sel = 0-fold; neu= 4-fold
   mkt.intron.4fold <-  mkt.extended(sel=9,neu=4,gffseq,unknowns,n) # sel = exon; neu= 4-fold
   mkt.5UTR.4fold <-  mkt.extended(sel=5,neu=4,gffseq,unknowns,n) # sel = 5-UTR; neu= 4-fold
@@ -266,7 +272,7 @@ print(filename)
   cat("MKT performed. Data will be stored in a new row\n")
   
   ## ADD NEW ROW ##
-  newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.inter.4fold)
+  newrow <- c(S,Pi(k,m,n),DAF,div.number,D,K,unknowns,mkt.0fold.4fold,mkt.intron.4fold,mkt.5UTR.4fold,mkt.3UTR.4fold,mkt.inter.4fold)
   memory.profile()
   return(newrow)  
 }

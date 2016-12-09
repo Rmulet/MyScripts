@@ -47,12 +47,28 @@ pop <- args[8] # Population name
 
 start.time <- Sys.time()
 
-region <- readVCF(filename,numcols=5000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-# Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
+# We attempt to read the VCF file. This is not possible when, for instance, all human positions are monomorphic and some
+# chimpanzee ones are unknown, probably due to an alignment with multiple sites at once. Another possibility is the complete
+# absence of variants in that region, both between humans and chimpanzees and among humans.
 
-# Verify that the region contains variants and has been loaded onto R.
-if (region@n.biallelic.sites==0|is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
-  print("This region does not contain any variants")
+region <- tryCatch({readVCF(filename,numcols=10000,tid=chrom,from=ini,to=end,include.unknown=TRUE)},error = function(e) {
+	message(e); write(sprintf("%s:%d-%d -- %s",chrom,ini,end,e),sprintf("error_chr%s_%s.log",chrom,pop),append=TRUE)
+	return(NULL)})
+
+# Verify that the region object is not null (failure to load), contains variants and has been loaded onto R. If it is, then we assume
+# that there are no variants, and therefore S,D and all related metrics are 0 (except for alpha)
+
+if (is.null(region)||region@n.biallelic.sites==0||is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
+  print("This region does not contain any variants: S, Pi and D set to 0")
+  nwin=floor((end-ini)/wsize)
+  windows <- cbind(start=seq(ini,end-wsize,by=wsize),end=seq(ini+wsize,end,by=10000))
+  newrows <- matrix(rep(c(0,0,0,0,0,0,0,NA,NA,0,0,0,0,NA,NA),nwin),nrow=nwin,byrow=TRUE)
+  colnames(newrows) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Psel","Pneu","Dsel","Dneu","msel","mneu")
+  export <- data.frame(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),nwin),windows,newrows)
+  
+  write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
+              col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist  quit()
+  quit()
 }
 
 load(sprintf("gffseq_chr%s.RData",chrom)) # Annotation data from GFFtoFASTA
@@ -131,11 +147,11 @@ measures <- function(object) {
   ## POLYMORPHISM ##
   # PopGenome has its own 'neutrality' and 'diversity' stats modules, but diversity takes a
   # very long time (55 seconds including Pi for a region of 100 kb).
-  Pi <- function(k,m,n) { # Window number
+  Pi <- function(k,m,n) { 
    comb <- choose(n,2) # Binomial coefficient = combination without repetition
    pi <- k/(comb*m)
    return(round(pi,7))
-   }
+  }
   # TABLE CONTAINING THE DATA:
 
   tabsum <- as.data.frame(matrix(numeric(nwin*15),ncol=15,nrow=nwin))
@@ -248,12 +264,11 @@ measures <- function(object) {
     # of each class. Doing that would require modifying the 'set.synnonsyn2' function
     # to obtain all codons and check fold in every position (0,1,2)
     
-    m.neu <- sum(bial.class == 4,na.rm=T) # neu=4-fold
-    m.sel <- sum(bial.class == 0,na.rm=T) # sel=0-fold
+    m.neu <- sum(gffseq[winstart:winstart+wsize] == 4,na.rm=T) # neu=4-fold
+    m.sel <- sum(gffseq[winstart:winstart+wsize] == 0,na.rm=T) # sel=0-fold
     
     ## ADD NEW ROW ##
     newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,alpha.cor,test,Psel.neutral,Pneu,Dsel,Dneu,m.sel,m.neu)
-    print(newrow)
     tabsum[window,] <- newrow
   }
   return(tabsum) 

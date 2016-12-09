@@ -138,7 +138,7 @@ do
 	# Since bcftools assumes inclusive 1-based format [closed], we subtract 1 from the end coordinate.
 	pos2=$((pos2-1)) # The last base is included by BCFtools
 	if [ "$CNVS" == "CNVS" ] ; then
-		bcftools merge -Ov --missing-to-ref -r $chrom:$pos1-$pos2 $gpfile $alnfile | grep -v "<CN" > merge.$k.vcf
+		bcftools merge -Ov --missing-to-ref -r $chrom:$pos1-$pos2 $gpfile $alnfile | awk '$5 !~ "<CN"' > merge.$k.vcf
 		bgzip merge.$k.vcf
 	else	
 		bcftools merge -Oz --missing-to-ref -o merge.$k.vcf.gz -r $chrom:$pos1-$pos2 $gpfile $alnfile
@@ -148,7 +148,7 @@ do
 
 	# R ANALYSIS OF NUCLEOTIDE VARIATION:
 	# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
-	echo merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT
+	echo merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP
 	VCFAnalysis.R merge.$k.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
 	# Filename = merge.$k.vcf; ini = pos1; end = pos2 // --slave >/dev/null  [slave to cut startup messages]
 	if [[ $? -ne 0 ]]; then
