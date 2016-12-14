@@ -4,6 +4,8 @@
 
 # UPDATE 20161025: Feature for specific chromosome analysis added
 # UPDATE 20161027: Implemented the MASK feature. Compatibility with Andromeda evaluated and minor issues fixed.
+# UPDATE 20161130: Fixed issues with chromosome Y: CNVs are removed and ploidy is verified before pseudo-diploic conversion.
+# UPDATE 20161214: Fixed issue with the mask extraction (chr1 and chr2)
 
 display_usage() {
 	echo -e "\nThis script analyses patterns of variation along the entire genome by repeatedly calling VCFmerger.sh for each chromosome"
@@ -173,7 +175,7 @@ genome_analysis() {
 
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
-		grep "chr$i" $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
+		awk -v var="chr$i" '$1==var' $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
 		echo -e "Analysing polymorphism and divergence in chr$i"
 
                 if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)

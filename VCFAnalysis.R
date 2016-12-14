@@ -58,7 +58,7 @@ region <- tryCatch({readVCF(filename,numcols=10000,tid=chrom,from=ini,to=end,inc
 # Verify that the region object is not null (failure to load), contains variants and has been loaded onto R. If it is, then we assume
 # that there are no variants, and therefore S,D and all related metrics are 0 (except for alpha)
 
-if (is.null(region)||region@n.biallelic.sites==0||is.logical(region)) { # If readVCF fails, region=FALSE. If no variants, region=NULL
+if (is.null(region)||is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE. If no variants, region=NULL
   print("This region does not contain any variants: S, Pi and D set to 0")
   nwin=floor((end-ini)/wsize)
   windows <- cbind(start=seq(ini,end-wsize,by=wsize),end=seq(ini+wsize,end,by=10000))
