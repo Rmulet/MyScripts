@@ -16,6 +16,7 @@
 # UPDATE6: 1) Improved DAF with 1000 AA 2) Improved MKT with 4fold and extended MKT.
 # UPDATE7: GFFtoFASTA has replaced 'set.synnonsyn_alt' as the method of choic for MKT.
 # UPDATE8: Change in the coordinate system according to the mask in pseudo-BED format.
+# UPDATE9: Fixing how empty regions are dealth with
 
 #############################
 ## IMPORT AND PREPARE DATA ##
