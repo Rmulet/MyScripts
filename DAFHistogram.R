@@ -16,9 +16,13 @@ DAF <- t(sapply(strsplit(gen.data$DAF,";"),as.numeric))
 
 # With barplot or similar
 freqnames <- c("0.0-0.1","0.1-0.2","0.2-0.3","0.3-0.4","0.4-0.5","0.5-0.6","0.6-0.7","0.7-0.8","0.8-0.9","0.9-1.0")
-seq(0,1,1/ncol(DAF))
 
-for 
+
+freqnames <- character(ncol(DAF))
+sequence <- seq(0,1,1/ncol(DAF))
+for (n in 1:ncol(DAF)) {
+  freqnames[n] <- sprintf("%s-%s",sequence[n],sequence[n+1])
+}
 
 colnames(DAF) <- freqnames
 barplot(colSums(DAF),col="firebrick",border=NA)
