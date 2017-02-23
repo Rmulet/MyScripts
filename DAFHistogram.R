@@ -1,12 +1,25 @@
 #!/usr/bin/Rscript
 
+# setwd("/home/roger/Documents/Genomics/MyScripts")
 library(ggplot2)
 
-## Total DAF ##
+# file <- "DAFTable.tab"
 
+# Import DAF file
+gen.data <- read.table(file,header=TRUE,stringsAsFactors = FALSE)
+
+# Remove regions with a NA
+gen.data <- gen.data[complete.cases(gen.data),]
+
+# Put the 
 DAF <- t(sapply(strsplit(gen.data$DAF,";"),as.numeric))
+
 # With barplot or similar
 freqnames <- c("0.0-0.1","0.1-0.2","0.2-0.3","0.3-0.4","0.4-0.5","0.5-0.6","0.6-0.7","0.7-0.8","0.8-0.9","0.9-1.0")
+seq(0,1,1/ncol(DAF))
+
+for 
+
 colnames(DAF) <- freqnames
 barplot(colSums(DAF),col="firebrick",border=NA)
 barplot(colSums(DAF),col="firebrick",border=NA,space=1,cex.names=0.8)
