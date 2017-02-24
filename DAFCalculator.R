@@ -19,9 +19,9 @@ if(length(args) < 4) {
 ## Help section
 if("--help" %in% args || "-h" %in% args) {
   cat("
-      DAFCal - A simple script to calculate DAF using 1000 GP data and PopGenome.
+      DAFCalculator - A simple script to calculate DAF using 1000 GP data and PopGenome.
 
-      Usage: DAFCal.R <VCF-file> <chr> <start> <end> [-o|--output] [-h]
+      Usage: DAFCalculator.R <VCF-file> <chr> <start> <end> [-o|--output] [-h]
 
       Positional arguments:
       <vcf-file> STR            A VCF file containing the variants of interest
@@ -30,7 +30,8 @@ if("--help" %in% args || "-h" %in% args) {
       <end> INT                 End of the region under study (e.g. 1500)
 
       Optional arguments:
-      -o, --output FILENAME     Name of the output [DEFAULT: INPUT_daf.txt]
+      --interval INT            Interval of frequencies for the DAF histogram
+      --output FILENAME         Name of the output [DEFAULT: INPUT_daf.txt]
       -h, --help                Print this text
 
       Example usage: Rscript DAFcal.R chr21.vcf.gz 21 100 20000
@@ -38,7 +39,7 @@ if("--help" %in% args || "-h" %in% args) {
   q(save="no") # Exit without saving
 }
 
-## Retrieve arguments
+## Retrieve positional arguments
 filename <- args[1]
 
 if(!file.exists(filename)) {
@@ -51,13 +52,21 @@ ini <- as.numeric(args[3])-1; end <- as.numeric(args[4])-1 # Although the mask f
 # comparison with the FASTA file reveals that is it actually 1-based, half-open. That is, the end is not
 # included. START matches the position in the FASTA, but PopGenome tends to add 1; therefore, we remove it
 
-if(args >= 5 && ("--output" %in% args |"-o" %in% args)) {
-  output.name <- args[6]
-} else {
-  output.name <- "DAFTable"
-}
+## Retrieve optional arguments
 
-print(c(ini,end))
+output.name <- "DAFTable"; interval <- 0.05
+
+if(length(args) > 5) {
+  optional.args <- args[5:length(args)]
+  if (length(index <- grep("--output",optional.args)) != 0){
+    output.name <- optional.args[index+1]
+  }
+  if (length(index <- grep("--interval",optional.args)) != 0){
+    interval <- optional.args[index+1]
+  }
+}
+  
+print(c(ini,end,output.name,interval))
 
 ########################
 ## LOAD GENOME OBJECT ##
