@@ -62,11 +62,11 @@ if(length(args) > 5) {
     output.name <- optional.args[index+1]
   }
   if (length(index <- grep("--interval",optional.args)) != 0){
-    interval <- optional.args[index+1]
+    interval <- as.numeric(optional.args[index+1])
   }
 }
   
-print(c(ini,end,output.name,interval))
+cat(sprintf("Settings: %s:%s-%s %s %s\n",chrom,ini,end,output.name,interval))
 
 ########################
 ## LOAD GENOME OBJECT ##
@@ -87,7 +87,7 @@ region <- tryCatch({readVCF(filename,numcols=10000,tid=chrom,from=ini,to=end,inc
 # that there are no variants, and therefore S,D and all related metrics are 0 (except for alpha)
 
 if (is.null(region)||is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE. If no variants, region=NULL
-  print("This region does not contain any variants: DAF set to NA")
+  cat("This region does not contain any variants: DAF set to NA\n\n")
   export <- data.frame(chr=chrom,start=ini,end=end,DAF=NA)
   write.table(export,file=paste(output.name,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE,
               col.names=!file.exists(paste(output.name,".tab",sep="")))  # Column names written if file does not exist
@@ -141,7 +141,7 @@ mafan <- merge(MAF.df[,1,drop=F],mafan,all.x=TRUE) # Retain originals
 # MAF.df[which(is.na(mafan$MAF))[!(which(is.na(mafan$MAF)) %in% which(MAF.df$MAF == 0)),]
 
 if (is.numeric (mafan$DAF)) {
-  DAF <- hist(mafan$DAF,seq(0.0,1,0.05),plot=F)$counts
+  DAF <- hist(mafan$DAF,seq(0.0,1,interval),plot=F)$counts
   DAF <- paste(DAF,collapse = ";")
 } else {DAF <- NA}
 
@@ -154,4 +154,4 @@ cat("done\n")
 export <- data.frame(chr=chrom,start=ini,end=end,DAF=DAF)
 write.table(export,file=paste(output.name,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE,
             col.names=!file.exists(paste(output.name,".tab",sep="")))  # Column names written if file does not exist
-cat(sprintf("Data saved to file %s",paste(output.name,".tab",sep="")))
+cat(sprintf("Data saved to file %s\n\n",paste(output.name,".tab",sep="")))
