@@ -43,4 +43,4 @@ plot(PreBinnedHistogram(breaks=bins,counts=colSums(DAF)),col="firebrick",border=
 axis(2,at=seq(0,800000,by=200000),label=c(0.0,0.2,0.4,0.6,0.8)) # las = orientation of the labels
 dev.off()
 
-cat("Histogram generated under the name 'DAFHistogram'")  
+cat("Histogram generated under the name 'DAFHistogram.png'\n")  

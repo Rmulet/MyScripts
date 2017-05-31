@@ -94,6 +94,8 @@ alnraw="$WORKING/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by chromo
 alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
 finaldir="$WORKING/Final/GeneByGene"
 
+BCFTOOLS="/home/roger/Software/bcftools"
+
 # maskdir="$gpdat/Masks/FASTA"
 
 ## DOWNLOAD FILES [OPTIONAL]
@@ -133,6 +135,22 @@ genome_analysis() {
 			mv $gpfile $gpdat; cd $gpdat
 			tabix -p vcf $gpfile
 		fi
+
+############sonia added these lines from the windows pipeline
+        if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
+                echo -e "Excluding males from chromosome X"
+                fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed "s/,$//" )
+                $BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
+                mv chr$i.temp.vcf.gz $gpfile
+                tabix -p vcf $gpfile
+        elif [[ "$i" == "Y" ]] && [[ $(zcat $gpfile | grep -v '#' | head -1 | awk '{if ($10 ~ /[0-4.]\|[0-4.]/) print "DIPLOID"; else print "HAPLOID"}') == "HAPLOID" ]]; then
+                echo -e "Converting chromosome Y to pseudo-diploid"
+                zcat $gpfile | awk '$5 !~ "<CN"' |  perl -pe 's/\t([0-4.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
+                mv $gpfile chr$i.haploid_gp.vcf.gz
+                bgzip chr$i.temp.vcf; mv chr$i.temp.vcf.gz $gpfile
+                tabix -p vcf $gpfile
+        fi
+###############################################################
 
 		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to contain individuals and populations
 			popname=$2
@@ -181,8 +199,14 @@ genome_analysis() {
 		# MERGE AND ANALYSIS #
 		echo -e "Preparing the accessibility mask for chr$i"
 		maskfile=$gpdat/Masks/FASTA/$(cd $gpdat/Masks/FASTA && ls -d *chr$i.$MASK*fasta*) # Depends on the chosen criteria. Underscore must be escaped.
+
+		if [[ -z $maskfile ]]; then
+			echo "Accessibility mask not found!"
+			exit -1
+		fi
+
 		echo -e "Analysing polymorphism and divergence in chr$i"
-		echo $gpfile $alnfile ${maskfile##/*} $i GeneData_chr$i $POP  # GPFILE ALNFILE MASK CHROM DB POP
+		echo $gpfile $alnfile ${maskfile##*/} $i GeneData_chr$i $POP  # GPFILE ALNFILE MASK CHROM DB POP
 		GeneByGene.R $gpdat/$gpfile $alndat/$alnfile $maskfile $i GeneData_chr$i $popname
 		echo -e "Analysis of chr$i complete.\n"		
 	done

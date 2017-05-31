@@ -126,7 +126,7 @@ genome_analysis() {
 
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
 			echo -e "Excluding males from chromosome X"
-			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',')
+			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed "s/,$//" )
 			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove male individuals
 			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile

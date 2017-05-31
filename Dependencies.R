@@ -18,7 +18,7 @@ setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
 library("TxDb.Hsapiens.UCSC.hg19.knownGene")
 txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
 seqlevels(txdb) <- seqlevels0(txdb) # Resets seqlevels
-seqlevels(txdb) <- sapply(1:22,function(x){paste("chr",x,sep="",collapse="")})  
+seqlevels(txdb) <- unname(sapply(c(1:22,"X","Y","M"),function(x){paste("chr",x,sep="",collapse="")}))
 grgenes <- genes(txdb)
 genestable <- data.frame(name=grgenes$"gene_id",chr=seqnames(grgenes),start=start(grgenes),end=end(grgenes))
 save(genestable,file="GenesTable.RData")

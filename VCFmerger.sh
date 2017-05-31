@@ -146,7 +146,7 @@ do
 
 	if [[ $? -ne 0 ]]; then
 		echo 'Error: Bcftools merge failed!'
-	        exit -1
+        exit -1
 	else
 		echo -e "Files merged: merge.$k.vcf.gz generated"
 	fi
