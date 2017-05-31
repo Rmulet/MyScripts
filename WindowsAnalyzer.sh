@@ -130,7 +130,7 @@ genome_analysis() {
 			echo $fem
 			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
 			mv chr$i.temp.vcf.gz $gpfile
-			tabix -p vcf chr$i.temp.vcf f $gpfile
+			tabix -p vcf $gpfile
 		elif [[ "$i" == "Y" ]] && [[ $(zcat $gpfile | grep -v '#' | head -1 | awk '{if ($10 ~ /[0-4.]\|[0-4.]/) print "DIPLOID"; else print "HAPLOID"}') == "HAPLOID" ]]; then
 			echo -e "Converting chromosome Y to pseudo-diploid"
 			zcat $gpfile | awk '$5 !~ "<CN"' |  perl -pe 's/\t([0-4.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals

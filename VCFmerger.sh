@@ -145,10 +145,10 @@ do
 	fi
 
 	if [[ $? -ne 0 ]]; then
-			echo 'Error: Bcftools merge failed!'
-	        exit -1
+		echo 'Error: Bcftools merge failed!'
+        exit -1
 	else
-			echo -e "Files merged: merge.$k.vcf.gz generated"
+		echo -e "Files merged: merge.$k.vcf.gz generated"
 	fi
 
 	tabix -p vcf merge.$k.vcf.gz # Tabixing for analysis with PopGenome
