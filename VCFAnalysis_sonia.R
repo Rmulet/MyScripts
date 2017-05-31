@@ -39,6 +39,27 @@ db <- args[6] # Name of the data table [Genomics]
 MK <- args[7] # Calculate MKT
 pop <- args[8] # Population name
 
+################## FOR TESTS START HERE ##################
+ library("PopGenome")
+ setwd("/home/scasillas/Results_Windows/chrX")
+# #[1] "merge.1.vcf.gz"    "22"                "16847853"         
+# #[4] "16861622"          "10000"             "WindowsData_chr22"
+# #[7] "TRUE"              "CEU"  
+ filename <- "merge.1.vcf.gz"
+ chrom <- "X"
+ ini <- 347642-1
+ end <- 362360-1
+ wsize <- 10000; 
+ db <- "WindowsData_chrX"
+ MK <- TRUE
+ pop <- "CEU"
+
+#if (ini<46164109) {
+#  quit()
+#}
+
+##########################################################
+
 # (1) We need to keep the .tbi file in the same folder as the vcf.gz (which must be compressed)
 # (2) The chromosome identifier in the GFF has to be identical to the identifier used in the VCF file
 # Since VCFs from the 1000GP use numeric-only identifiers (e.g. '22'), a conversion is required:
@@ -63,12 +84,17 @@ if (is.null(region)||is.logical(region)||region@n.biallelic.sites==0) { # If rea
   print("This region does not contain any variants: S, Pi and D set to 0")
   nwin=floor((end-ini)/wsize)
   windows <- cbind(start=seq(ini,end-wsize,by=wsize),end=seq(ini+wsize,end,by=10000))
-  newrows <- matrix(rep(c(0,0,0,0,0,0,0,NA,NA,0,0,0,0,NA,NA),nwin),nrow=nwin,byrow=TRUE)
-  colnames(newrows) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Psel","Pneu","Dsel","Dneu","msel","mneu")
+  newrows <- matrix(rep(c(0,0,0,0,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,NA,0,0,NA,0,0,0,0,0,0,0,0,NA,NA,NA,NA,0,0,0,0,0,0,0,NA,NA,0,0),nwin),nrow=nwin,byrow=TRUE)
+  colnames(newrows) <- c("S","Pi","theta","S2","Tajima_D","FuLi_F","FuLi_D","FayWu_H","Zeng_E",
+	"Wall_B","Wall_Q","Rozas_ZA","Rozas_ZZ","Kelly_ZnS","nucleotide_FST","haplotype_FST",
+	"Nei_GST","Hudson_GST","Hudson_HST","Hudson_KST","nuc_diversity_within","hap_diversity_within",
+	"DAF","Divsites","D","K","Unknown","Pneu","Psel","Dneu","Dsel","NI","alpha","DoS",
+	"Fisher1","Pneu.less5","Pneu.more5","Psel.less5","Psel.more5","Psel.neutral.less5",
+	"Psel.neutral","Psel.weak","alpha.cor","Fisher2","msel","mneu")
   export <- data.frame(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),nwin),windows,newrows)
   
-  write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
-              col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist  quit()
+  write.table(export,file=paste(db,"_",pop,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
+              col.names=!file.exists(paste(db,"_",pop,".tab",sep=""))) # Column names written if file does not exist  quit()
   quit()
 }
 
@@ -137,6 +163,17 @@ mafan <- merge(MAF.df[,1,drop=F],mafan,all.x=TRUE) # Retain originals
 # Some sites do not have AA. In some cases because they are divergent, but others are polymorphic:
 # MAF.df[which(is.na(mafan$MAF))[!(which(is.na(mafan$MAF)) %in% which(MAF.df$MAF == 0)),]
 
+################ I do not add this, because it only works on "region" class, which includes the whole consecutive region (>= window)
+# Counts for different types of sites: slide@n.sites, n.biallelic.sites, n.gaps, n.unknowns, n.valid.sites, n.polyallelic.sites, trans.transv.ratio
+#n_sites <- slide@n.sites
+#n_biallelic_sites <- slide@n.biallelic.sites
+#n_gaps <- slide@n.gaps
+#n_unknowns <- slide@n.unknowns
+#n_valid_sites <- slide@n.valid.sites
+#n_polyallelic_sites <- slide@n.polyallelic.sites
+#trans_transv_ratio <- slide@trans.transv.ratio
+################
+
 ######################################
 ## CUSTOM FUNCTION WINDOW BY WINDOW ##
 ######################################
@@ -155,15 +192,17 @@ measures <- function(object) {
   }
   # TABLE CONTAINING THE DATA:
 
-  tabsum <- as.data.frame(matrix(numeric(nwin*15),ncol=15,nrow=nwin))
-  colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Alpha","Fisher","Psel","Pneu","Dsel","Dneu","msel","mneu")
+  tabsum <- as.data.frame(matrix(numeric(nwin*26),ncol=26,nrow=nwin))
+  colnames(tabsum) <- c("S","Pi","DAF","Divsites","D","K","Unknown","Pneu","Psel","Dneu","Dsel","NI","alpha","DoS",
+	"Fisher1","Pneu.less5","Pneu.more5","Psel.less5","Psel.more5","Psel.neutral.less5",
+	"Psel.neutral","Psel.weak","alpha.cor","Fisher2","msel","mneu")
 
   # LOOP TO READ THE WINDOWS IN SLIDE VARIABLE:
   for (window in 1:nrow(windows)) {
     # EXTRACT SEGREGATING SITES (EXCLUDING OUTGROUP)
     bial <- get.biallelic.matrix(slide,window) # Biallelic matrix of the window
     if (is.null(bial)||dim(bial)[2]==0) { # When no variants are detected
-      newrow <- rep(0,15) # Empty rows
+      newrow <- rep(0,26) # Empty rows
       tabsum[window,] <- newrow
       next
     }
@@ -230,9 +269,10 @@ measures <- function(object) {
     alpha <- 1-NI
     DoS <- Dsel/(Dsel+Dneu)-Psel/(Psel+Pneu) # Direction of selection
     contingency.std <- matrix(c(Psel,Pneu,Dsel,Dneu),c(2,2))
-    test <- if(!is.na(sum(contingency.std))){
+    test1 <- if(!is.na(sum(contingency.std))){
     if(sum(contingency.std)>0){fisher.test(contingency.std)$p.value}
     } else {NA}
+    test1 <- if (is.null(test1)) {NA} else {test1}
 
     # ADAPTED:
 
@@ -255,9 +295,10 @@ measures <- function(object) {
     
     alpha.cor <- 1-(Psel.neutral/Pneu)*(Dneu/Dsel)
     contingency <- matrix(c(Psel.neutral,Pneu,Dsel,Dneu),c(2,2))
-    test <- if(!is.na(sum(contingency))){
+    test2 <- if(!is.na(sum(contingency))){
       if(sum(contingency)>0){fisher.test(contingency)$p.value}
     } else {NA}
+    test2 <- if (is.null(test2)) {NA} else {test2}
 
     # OTHER ESTIMATORS:
 
@@ -269,23 +310,70 @@ measures <- function(object) {
     m.sel <- sum(gffseq[winstart:winstart+wsize] == 0,na.rm=T) # sel=0-fold
     
     ## ADD NEW ROW ##
-    newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,alpha.cor,test,Psel.neutral,Pneu,Dsel,Dneu,m.sel,m.neu)
+    newrow <- c(S,Pi(k,m,n),DAF,divsites,D,K,unknowns,Pneu,Psel,Dneu,Dsel,NI,alpha,DoS,test1,
+	Pneu.less5,Pneu.more5,Psel.less5,Psel.more5,Psel.neutral.less5,Psel.neutral,Psel.weak,
+	alpha.cor,test2,m.sel,m.neu)
     tabsum[window,] <- newrow
   }
   return(tabsum) 
 }
 
 
+## LINKAGE DISEQUILIBRIUM ##
+
+##### Em sembla que això no ho calcularé...
+#slide <- calc.R2(slide)
+#slide@region.stats@linkage.disequilibrium   # no sé, surt un núm només...
+
+
+##### Aquest sí que sembla funcionar bé...
+slide <- linkage.stats(slide,detail=FALSE)
+#get.linkage(slide)[[1]]
+#                         Wall.B    Wall.Q  Rozas.ZA   Rozas.ZZ Kelly.Z_nS
+#16847853 - 16857852 : 0.1715976 0.1764706 0.3055362 0.03736886  0.2681674
+# o accedir a cada mètrica com
+#slide@Wall.B[,1]     # cal dividir també per la wsize???
+Wall_B <- round(slide@Wall.B[,1],7)
+Wall_Q <- round(slide@Wall.Q[,1],7)
+Rozas_ZA <- round(slide@Rozas.ZA[,1],7)
+Rozas_ZZ <- round(slide@Rozas.ZZ[,1],7)
+Kelly_ZnS <- round(slide@Kelly.Z_nS[,1],7)
+
+slide <- F_ST.stats(slide,detail=FALSE)
+# slide@region.stats@haplotype.diversity
+# o accedir al valor com
+#slide@hap.diversity.within[,1]    # cal dividir també per la wsize???
+#slide@nucleotide.F_ST[,1]
+#slide@haplotype.F_ST[,1]
+# others: haplotype.F_ST, nucleotide.F_ST, Nei.G_ST, Hudson.G_ST, Hudson.H_ST, Hudson.K_ST, nuc.diversity.within, hap.diversity.within, Pi
+nucleotide_FST <- round(slide@nucleotide.F_ST[,1],7)
+haplotype_FST <- round(slide@haplotype.F_ST[,1],7)
+Nei_GST <- round(slide@Nei.G_ST[,1],7)
+Hudson_GST <- round(slide@Hudson.G_ST[,1],7)
+Hudson_HST <- round(slide@Hudson.H_ST[,1],7)
+Hudson_KST <- round(slide@Hudson.K_ST[,1],7)
+nuc_diversity_within <- round(slide@nuc.diversity.within[,1]/wsize,7)
+hap_diversity_within <- round(slide@hap.diversity.within[,1],7)
+
 ## INTEGRATION OF NEUTRALITY, DIVERSITY AND DIVERGENCE METRICS ##
 
-# Results from neutrality stats module are divided by number of sites
+# Results from neutrality stats module are divided by number of sites slide@n.sites  
 regiondata <- measures(slide)
 S2 <- slide@n.segregating.sites[,1] # Segretaging sites excluding unknowns
 Tajima_D <- round(slide@Tajima.D[,1]/wsize,7)
 FuLi_F <- round(slide@Fu.Li.F[,1]/wsize,7)
+FuLi_D <- round(slide@Fu.Li.D[,1]/wsize,7)
+FayWu_H <- round(slide@Fay.Wu.H[,1]/wsize,7)
+Zeng_E <- round(slide@Zeng.E[,1]/wsize,7)
+#Rozas_R2 <- round(slide@Rozas.R_2[,1]/wsize,7) # it is a detailed statistic; if wanted, apply option: do.R2
 theta <- round(slide@theta_Watterson[,1]/wsize,7)
-if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,regiondata[,3:ncol(regiondata)])
-} else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima_D=0,FuLi_F=0,regiondata[,3:ncol(regiondata)]) }
+
+if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F,FuLi_D,FayWu_H,Zeng_E,Wall_B,Wall_Q,Rozas_ZA,Rozas_ZZ,Kelly_ZnS,
+	nucleotide_FST,haplotype_FST,Nei_GST,Hudson_GST,Hudson_HST,Hudson_KST,nuc_diversity_within,hap_diversity_within,regiondata[,3:ncol(regiondata)])
+} else { regiondata <- cbind(regiondata[,1:2],theta=NA,S2=0,Tajima_D=NA,FuLi_F=NA,FuLi_D=NA,FayWu_H=NA,Zeng_E=NA,Wall_B=NA,Wall_Q=NA,Rozas_ZA=NA,Rozas_ZZ=NA,Kelly_ZnS=NA,
+	nucleotide_FST=NA,haplotype_FST=NA,Nei_GST=NA,Hudson_GST=NA,Hudson_HST=NA,Hudson_KST=NA,nuc_diversity_within=0,hap_diversity_within=0,
+	regiondata[,3:ncol(regiondata)]) }
+
 
 ######################
 ## DATA EXPORTATION ##
@@ -297,27 +385,27 @@ if (exists("S2")) {regiondata <- cbind(regiondata[,1:2],theta,S2,Tajima_D,FuLi_F
 windows[,1] <- windows[,1]-1
 export <- cbind(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),NROW(windows)),windows,regiondata)
 
-write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
-col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist
+write.table(export,file=paste(db,"_",pop,"_",wsize,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
+col.names=!file.exists(paste(db,"_",pop,"_",wsize,".tab",sep=""))) # Column names written if file does not exist
 
-if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
+#if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
 
-	suppressMessages(library(DBI))
-	suppressMessages(library(RMySQL))
+#	suppressMessages(library(DBI))
+#	suppressMessages(library(RMySQL))
 	
-	con <- dbConnect(RMySQL::MySQL(),
-        user="roger", password="RM333",
-        dbname="PEGH", host="158.109.215.40")
+#	con <- dbConnect(RMySQL::MySQL(),
+#       user="roger", password="RM333",
+#       dbname="PEGH", host="158.109.215.40")
 
-	first <- !dbExistsTable(con,db)
+#	first <- !dbExistsTable(con,db)
 
-	dbWriteTable(con,value=export,name=db,row.names=F,append=T)
+#	dbWriteTable(con,value=export,name=db,row.names=F,append=T)
 
-	if (first == TRUE) # Remove if we want to concatenate various chromosomes
-	dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
-	dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
+#	if (first == TRUE) # Remove if we want to concatenate various chromosomes
+#	dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
+#	dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
 
-	on.exit(dbDisconnect(con))
-}
+#	on.exit(dbDisconnect(con))
+#}
 
 print(Sys.time() - start.time)

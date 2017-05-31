@@ -1,7 +1,8 @@
 #!/usr/bin/Rscript
 
-# setwd("~/Documents/2_GenomicsData/Final/GeneByGene")
+# setwd("~/Genomics/Final/GeneByGene")
 # gpfile <- "chr21_gp.vcf.gz" ; alnfile <- "chr21_aln.vcf.gz"; chrom <- "21" ; maskfile <- "20140520.chr21.pilot_mask.fasta.gz"
+# maskfile <- "~/Genomics/1000GP/Masks/FASTA/20140520.chr1.pilot_mask.fasta.gz"
 
 # UPDATE: Instead of segmenting the PopGenome object, we will remove those positions that
 # are missing via vector.
@@ -29,7 +30,7 @@ db <- args[5] # Name of the table where data are stored
 pop <- args[6] # Population name (ALL by default)
 if (!exists("pop")||is.na(pop)) { pop = "ALL" }
 
-if (args[1] == "-h" | args[1] == "--help") {
+if (length(args) == 0 | args[1] == "-h" | args[1] == "--help") {
   cat("\nGeneByGene.R - A script that calculates population genetics metrics for individual genes.\n")
   cat("\nUsage: GeneByGene.R [GP FILE] [ALN FILE] [MASKFILE] [CHROM] [DB] \n\n")
   quit()
@@ -149,17 +150,22 @@ mkt.extended <- function (sel=0,neu=4,gffseq,unknowns,n) {
 #################################
 
 popanalysis <- function(filename,ini,end,chrom,ac.pos,gffseq) {
-print(filename)
-  region <- readVCF(filename,numcols=9000,tid=chrom,from=ini,to=end,include.unknown=TRUE)
-  # Syn-nonsyn is not needed if we only use 0- and 4-fold. Therefore, GFF and FASTA can be skipped.
-  print(region@n.biallelic.sites)	
-  # Verify that the region contains variants and has been loaded onto R.
-  if (!exists("region")||is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
+  print(filename)
+  region <- tryCatch({readVCF(filename,numcols=10000,tid=chrom,from=ini,to=end,include.unknown=TRUE)},error = function(e) {
+    message(e); write(sprintf("%s:%d-%d -- %s",chrom,ini,end,e),sprintf("error_chr%s_%s.log",chrom,pop),append=TRUE)
+    return(NULL)})
+  
+  # Verify that the region object is not null (failure to load), contains variants and has been loaded onto R. If it is, then we assume
+  # that there are no variants, and therefore S,D and all related metrics are 0 (except for alpha)
+  
+  if (!exists("region")||is.null(region)||is.logical(region)||region@n.biallelic.sites==0) { # If readVCF fails, region=FALSE(logical). If no variants, sites=0
     print("No variants were identified in this region")
     newrow <- c(rep(0,6),rep(NA,111)) # Empty rows
     return(newrow)
   }
-  
+
+  message(sprintf("Number of biallelic sites: %s",region@n.biallelic.sites))
+    
   ## DEFINE POPULATION/OUTGROUP ##
   
   # The outgroup can be defined as a different population so that calculations of diversity and neutrality 
@@ -229,6 +235,7 @@ print(filename)
   # DETERMINE S AND K (WHEN VARIANTS ARE AVAILABLE)
   if (is.null(bial[1:n,poly.sites,drop=F])||dim(bial[1:n,poly.sites,drop=F])[2]==0) {
     S <- 0
+    freqs <<- bial[1:n,poly.sites,drop=F]
     k <- 0
   } else {
     S <- ncol(bial[1:n,poly.sites,drop=F]) # Number of variants
