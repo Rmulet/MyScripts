@@ -1,0 +1,851 @@
+################################################
+## dba.plotHeatmap -- Heatmap with clustering ##
+################################################
+
+# NOTE: When an argument of a function is tested for missing inside this function, R checks whether it has been passed. 
+# If not, the function does not fail as long as the variable is contained in the 'missing' evaluation. The exception to this
+# are functions including those 'missing' arguments where they are also test. Thus, pv.setMask(mask) will not fail inside
+# dba.plotHeatmap if mask is not passed because it is also tested inside
+
+# NOTE2: To prevent reordering of rows in heatmap1/2/3, Rowv=NA. But you can also manually provide a clustering function,
+# or dendrograms, via Rowv and hclustfun [https://stackoverflow.com/questions/5320814/order-of-rows-in-heatmap]
+
+# Basically when you show scaled data,  heatmap.2 scale data after clustering , whereas pheatmap scales data before clustering.
+# I am guessing that makes the difference in the final output sometimes [https://www.biostars.org/p/152291/]
+
+# https://renozao.github.io/NMF/devel/vignettes/aheatmaps.pdf  -- Enhanced version of pheatmap
+
+
+dba.plotHeatmap <- function(DBA, attributes=DBA$attributes, maxSites=1000, minval, maxval,
+                            contrast, method=DBA$config$AnalysisMethod, 
+                            th=DBA$config$th, bUsePval=DBA$config$bUsePval, 
+                            report, score, bLog=TRUE, mask, sites, sortFun, 
+                            correlations=TRUE, olPlot=DBA_COR, ColAttributes,RowAttributes, colSideCols, rowSideCols=colSideCols,
+                            margin=10, colScheme="Greens", distMethod="pearson", # Distance by Pearson
+                            ...)
+{
+   DBA <- pv.check(DBA,bCheckEmpty=TRUE)
+   
+   if( (missing(contrast) || !missing(mask)) && !missing(score) ) {
+      DBA <- dba.count(DBA,peaks=NULL,score=score,bCorPlot=FALSE)	
+   }
+   
+   # If mask and contrast are missing, then mask is rep(T,length(pv$peaks)) [i.e. all the possible]
+   mask <- pv.setMask(DBA,mask,contrast)
+
+   # If contrast is NOT missing, then we modify DBA with a special function
+   if(!missing(contrast)) {
+      if(!missing(report)) {
+         report <- pv.DataType2Peaks(report)
+      }   	
+      DBA <- pv.getPlotData(DBA,attributes=attributes,contrast=contrast,report=report,wget $FTP_SERVER/pub/taxonomy/gi_taxid_nucl.dmp.b
+                            method=method,th=th,bUsePval=bUsePval,bNormalized=T,
+                            bPCA=F,bLog=F,minval=minval,maxval=maxval,mask=mask)
+      contrast <- 1
+      mask <- NULL                     
+   }
+   
+   # (1) Retrieve binding. bLog: Logical indicating that log2 values should be used [TRUE]
+   if(bLog) { 
+      vectors <- DBA$binding[,4:ncol(DBA$binding)] # !!!
+      if(max(vectors) > 1) { # must have positive counts to do log
+         vectors[vectors<1]=1
+         if(missing(minval)) {
+            minval <- 0
+         } else {
+            minval <- max(0,minval)
+         }
+         vectors <- log2(vectors)
+         DBA$binding[,4:ncol(DBA$binding)] <- vectors # Modify the DBA$binding
+      }
+   }
+
+   # (2) Calculate correlations IF specified. If correlations variable TRUE (or provided), then generate correlations
+   if(length(correlations)==1 & ((correlations[1] == DBA_OLAP_ALL) | (correlations[1] == TRUE)))  {
+      if(nrow(DBA$binding)>1) {
+         if(!missing(sites)) {
+			# Sites: logical vector indicating which sites to include; first maxSites of these.    
+            if(is.logical(sites)) {
+               sites <- which(sites)	
+            }	   
+         } 	
+	     # If mask and sites are missing, mask is all the classes, sites is all the sites.
+         # 
+         correlations <- pv.occupancy(DBA, mask=mask, sites=sites, Sort='cor', bCorOnly=T,CorMethod=distMethod)
+      } else {
+         warning('No correlation heatmap plotted -- contrast does not have enough differentially bound sites.')	
+         return(NULL)   	     	
+      }
+   }
+   # (3) Generate heatmap passing the correlations vector. This is the one executed with default settings and assuming all right
+   if(correlations[1]!=FALSE) {
+      res <- pv.plotHeatmap(DBA, attributes=attributes, overlaps=correlations, olPlot=olPlot, mask=mask,
+                            ColScheme=colScheme, distMeth=distMethod, bReorder=TRUE, contrast=contrast,
+                            RowAttributes=RowAttributes,ColAttributes=ColAttributes,rowSideCols=rowSideCols,colSideCols=colSideCols,
+                            minval=minval, maxval=maxval, margins=c(margin,margin),
+                            ...)
+   } else {
+      
+      if(!missing(contrast)) {
+         if(nrow(DBA$binding)<2) { 	
+            warning('No heatmap plotted -- contrast does not have enough differentially bound sites.')	
+            return(NULL)   	     	
+         }
+         res <- pv.plotHeatmap(DBA, numSites=maxSites, attributes=attributes, contrast=contrast,
+                               RowAttributes=RowAttributes,ColAttributes=ColAttributes,rowSideCols=rowSideCols,colSideCols=colSideCols,
+                               ColScheme=colScheme, distMeth=distMethod, 
+                               margins=c(margin,margin), ...)
+         res <- data.frame(DBA$binding[1:maxSites,][res$rowInd,c(1:3,3+res$colInd)])
+         if(!is.character(res[1,1])) {
+            res[,1] <- DBA$chrmap[res[,1]]
+         }
+         res <- as(res,"GRanges")
+      } else {
+         
+         if(!missing(sortFun)) {
+            savevecs <- DBA$binding
+            DBA <- pv.sort(DBA, sortFun, mask=mask)
+         }
+         
+         res <- pv.plotHeatmap(DBA, numSites=maxSites, attributes=attributes, mask=mask, sites=sites,
+                               RowAttributes=RowAttributes,ColAttributes=ColAttributes,rowSideCols=rowSideCols,colSideCols=colSideCols,
+                               minval=minval, maxval=maxval, ColScheme=colScheme, distMeth=distMethod, 
+                               margins=c(margin,margin),...)
+         res <- data.frame(DBA$binding[1:maxSites,][res$rowInd,c(1:3,3+res$colInd)])
+         if(!is.character(res[1,1])) {
+            res[,1] <- DBA$chrmap[res[,1]]
+         }
+         res <- as(res,"GRanges")
+         if(!missing(sortFun)) {
+            DBA$binding <- savevecs
+         }
+      }
+   }
+   
+   invisible(res)	
+}
+
+pv.occupancy <- function (pv, mask, sites, byAttribute, Sort = "inall", CorMethod = "pearson", 
+    labelAtts = pv$attributes, bPlot = F, minVal = 0, bCorOnly = F, 
+    bNonZeroCors = F, chrmask) 
+{
+    pv <- pv.check(pv)
+    vecs <- pv$binding
+    if (missing(mask)) {
+        mask <- rep(T, ncol(pv$class))
+    }
+    else if (is.null(mask)) {
+        mask <- rep(T, ncol(pv$class))
+    }
+    else {
+        if (!is.logical(mask)) {
+            tmp <- rep(F, length(pv$peaks))
+            tmp[mask] <- T
+            mask <- tmp
+        }
+    }
+    if (missing(sites)) {
+        sites <- 1:nrow(vecs)
+    }
+    res <- NULL
+    if (missing(byAttribute)) {
+        if (length(sites) < nrow(vecs)) {
+            pv$binding <- vecs[sites, ]
+        }
+        if (!missing(chrmask)) {
+            chrindex <- match(chrmask, pv$chrmap)
+            vecindex <- pv$binding[, 1] == chrmask
+            pv$binding <- pv$binding[vecindex, ]
+        }
+		# pv.pairs -- compare all pairs of peaksets, rank by % overlap
+        res <- pv.pairs(pv, mask = mask, CorMethod = CorMethod, 
+            bPlot = bPlot, minVal = minVal, bCorOnly = bCorOnly, 
+            bNonZeroCors = bNonZeroCors)
+        if (!is.null(nrow(res))) {
+            if (!missing(labelAtts)) {
+                res <- pv.overlapToLabels(pv, res, labelAtts)
+            }
+        }
+    }
+    else {
+        vals <- unique(pv$class[byAttribute, mask])
+        for (i in 1:length(vals)) {
+            comps <- which(pv$class[byAttribute, ] %in% vals[i])
+            vmask <- rep(F, length(mask))
+            vmask[comps] <- TRUE
+            if (sum(vmask) > 1) {
+                res <- rbind(res, pv.occupancy(pv, mask = vmask, 
+                  sites = sites, Sort = Sort, CorMethod = CorMethod, 
+                  minVal = minVal, bCorOnly = bCorOnly))
+            }
+        }
+    }
+    if (!is.null(nrow(res))) {
+        if (Sort == "cor") {
+            res <- res[pv.orderfacs(res[, 6], decreasing = T), 
+                ]
+        }
+        else if (Sort == "percent") {
+            res <- res[pv.orderfacs(res[, 7], decreasing = T), 
+                ]
+        }
+        else {
+            res <- res[pv.orderfacs(res[, 5], decreasing = T), 
+                ]
+        }
+    }
+    return(res)
+}
+
+######################################################################
+## pv.plotHeatmap -- draw a heatmap using a subset of binding sites ##
+######################################################################
+
+PV_ONLYA <- 3
+PV_ONLYB <- 4
+PV_INALL <- 5
+PV_COR   <- 6 # PV_COR!!!
+PV_OLAP  <- 7
+PV_TOTAL <- 0
+
+# 1 Define pv.plotHeatmap based on heatmap.3
+pv.plotHeatmap <-
+   function(pv,numSites = 1000,attributes = pv$attributes,mask,sites,contrast,
+            overlaps, olmask, olPlot = PV_COR,divVal,RowAttributes,ColAttributes,rowSideCols,colSideCols,
+            bTop = T,minval,maxval,bReorder = F,ColScheme =
+               "Greens",distMeth = "pearson",...) { # DistMeth = "pearson"
+      pv <- pv.check(pv)
+      
+      if (missing(mask)) { # Check what mask to use
+         mask <- rep(T,ncol(pv$class))
+      } else if (is.null(mask)) {
+         mask <- rep(T,ncol(pv$class))
+      }
+      # (4) Define domap based on the overlaps argument, i.e. correlations from dba.Heatmap
+      ocm <- NULL
+      if (!missing(overlaps)) { # In dba.Heatmap, overlaps=correlations obtained by pv.occupancy
+         cres  <- overlaps
+         if (!missing(olmask)) {
+            cres <- cres[olmask,] # olmask = overlaps mask --> Not provided by default
+         }
+         if (is.null(nrow(cres))) {
+            cres <- matrix(cres,1,length(cres))
+         }
+         #cres <- pv.overlapToLabels(pv,cres,attributes)
+         if (missing(divVal)) {
+            ocm <- pv.occ2matrix(cres,olPlot)
+         } else {
+            ocm <- pv.occ2matrix(cres,olPlot,divVal)
+         }
+         labels <- pv.nums2labels(pv,rownames(ocm),attributes)
+         rowlab <- collab <- labels
+         rownames(ocm) <- labels
+         colnames(ocm) <- labels
+         domap <- ocm
+         
+      } else { # If no overlaps, use binding affinities directly
+         if (missing(sites)) {
+            sites <- 1:nrow(pv$binding) # Retrieve binding directly
+            numSites <- min(length(sites),numSites)
+         } else {
+            if (sum(sites) <= length(sites)) {
+               numSites <- min(sum(sites),numSites)
+               sites <- which(sites)
+            } else {
+               numSites <- length(sites)
+            }
+         }
+         
+         if (bTop == T) {
+            sites <- sites[1:numSites]
+         } else {
+            tsites <- length(sites)
+            sites <- sites[(tsites - numSites + 1):tsites]
+         }
+         colnames <- NULL
+         for (i in 1:ncol(pv$class)) {
+            colnames <-
+               c(colnames,pv.namestrings(pv$class[attributes,i])$tstring)
+         }
+         domap <- matrix(0.1,length(sites),sum(mask))
+         for (i in 1:ncol(domap)) {
+            domap[,i] <- as.numeric(pv$binding[sites,c(F,F,F,mask)][,i])
+         }
+         rowlab <- ""
+         collab <- colnames[mask]
+      }
+      
+      if (!missing(minval)) {
+         domap[domap < minval] <- minval
+      }
+      if (!missing(maxval)) {
+         domap[domap > maxval] <- maxval
+      }
+      
+      if (missing(overlaps)) {
+         for (i in 1:ncol(domap)) {
+            if (sum(domap[,i] == 0) == nrow(domap)) {
+               domap[1,i] <- 0.000001
+            }
+         }
+      }
+      # (5) Define color scheme - Greens by default, given by dba.Heatmap
+      if (length(ColScheme) == 1) { # Color scheme for the heatmap
+         cols <- colorRampPalette(brewer.pal(9,ColScheme))(256)
+      } else
+         cols <- ColScheme
+      
+      if (missing(rowSideCols)) {
+         rowSideCols <- pv.colsv
+      }
+      rowatts <- NULL
+      rowcols <- 0
+      if (missing(RowAttributes)) {
+         if (!missing(contrast)) {
+            if (sum(pv$contrasts[[contrast]]$group1) ||
+                sum(pv$contrasts[[contrast]]$group1)) {
+               rowatts <-
+                  pv.attributematrix(pv,mask,contrast = contrast,PV_GROUP,rowSideCols)
+               rowcols <- length(unique(as.vector(rowatts)))
+            }
+         }
+      } else if (!is.null(RowAttributes)) {
+         rowatts <-
+            pv.attributematrix(
+               pv,mask,contrast = contrast,RowAttributes,rowSideCols,bReverse = T
+            )
+         rowcols <- length(unique(as.vector(rowatts)))
+      }
+      
+      if (missing(colSideCols)) {
+         colSideCols <- pv.colsv
+      }
+      if (missing(ColAttributes)) {
+         colatts <-
+            pv.attributematrix(pv,mask,contrast = contrast,NULL,colSideCols,bAddGroup =
+                                  is.null(ocm))
+         colcols <- length(unique(as.vector(colatts)))
+      } else if (!is.null(ColAttributes)) {
+         colatts <-
+            pv.attributematrix(pv,mask,contrast = contrast,ColAttributes,colSideCols)
+         colcols <- length(unique(as.vector(colatts)))
+      } else {
+         colatts <- NULL
+         colcols <- 0
+      }
+      
+      if (is.null(ocm)) {
+         if (!missing(RowAttributes)) {
+            warning("Row color bars not permitted for peak score heatmaps.",call. =
+                       F)
+         }
+         heatmap.3(
+            domap,labCol = collab,col = cols,trace = "none",labRow = rowlab,KeyValueName =
+               "Score",
+            distfun = function(x)
+               Dist(x,method = distMeth),
+            ColSideColors = colatts,NumColSideColors = colcols,
+            ...
+         )
+	 # (6) Since ocm is NOT null, a) adjudicate colors; b) reorder names
+	 # NOTE: Ordering is altered by use of amap:::Dist !!!
+      } else {
+         res <-
+            heatmap.3(
+               domap,labCol = collab,col = cols,trace = "none",labRow = rowlab, 
+               KeyValueName ="Correlation",
+               distfun = function(x)
+                  Dist(x,method = distMeth),symm = T,revC = T,Colv = T,
+               RowSideColors = rowatts,ColSideColors = colatts,NumRowSideColors =
+                  rowcols,NumColSideColors = colcols,
+               ...
+            )
+         if (bReorder) { # Reorder names 
+            if (length(unique(rownames(ocm))) == nrow(ocm)) {
+               ocm <- pv.reorderM(ocm,res$rowDendrogram)
+            } else {
+               warning("Unable to re-order returned correlation matrix as labels are non-unique")
+            }
+         }
+         ocm <- signif(ocm,2) 
+         return(ocm)
+      }
+      
+}
+
+#########################################
+## pv.setMask -- Set the mask variable ##
+#########################################
+
+pv.setMask <- function(pv,mask,contrast) {
+   if(missing(contrast)) {
+      newmask <- rep(T,length(pv$peaks))
+   } else {
+      if(contrast <= length(pv$contrasts)) {
+         newmask <- pv$contrasts[[contrast]]$group1 | pv$contrasts[[contrast]]$group2
+      } else {
+         stop('Invalid contrast',call.=FALSE)
+      }
+   }
+   if(missing(mask)) {
+      mask <- newmask
+   } else if(is.null(mask)) {
+      mask <- newmask   
+   } else {
+      if(!is.logical(mask)) {
+         tmp  <- rep(F,length(pv$peaks))
+         tmp[mask] <- T
+         mask <- tmp
+      }
+   }
+   if(length(mask) != length(pv$peaks)) {
+      stop('Mask does not match samples.')
+   }
+   for(pnum in 1:length(pv$peaks)) {
+      if(nrow(pv$peaks[[pnum]])==0) {
+         mask[pnum]=F
+      }
+   }
+   return(mask)
+}
+
+################################################
+## dba.plotHeatmap -- Heatmap with clustering ##
+################################################
+
+heatmap.3=function (x, Rowv = TRUE, Colv = if (symm) "Rowv" else TRUE, 
+                    distfun = dist, hclustfun = hclust, dendrogram = c("both", 
+                                                                       "row", "column", "none"), symm = FALSE, scale = c("none", 
+                                                                                                                         "row", "column"), na.rm = TRUE, revC = identical(Colv, 
+                                                                                                                                                                          "Rowv"), add.expr, breaks, symbreaks = min(x < 0, na.rm = TRUE) || 
+                       scale != "none", col = "heat.colors", colsep, rowsep, 
+                    sepcolor = "white", sepwidth = c(0.05, 0.05), cellnote, notecex = 1, 
+                    notecol = "cyan", na.color = par("bg"), trace = c("column", 
+                                                                      "row", "both", "none"), tracecol = "cyan", hline = median(breaks), 
+                    vline = median(breaks), linecol = tracecol, margins = c(5, 
+                                                                            5), ColSideColors, RowSideColors, cexRow = 0.2 + 1/log10(nr), 
+                    cexCol = 0.2 + 1/log10(nc), labRow = NULL, labCol = NULL, 
+                    key = TRUE, keysize = 1.5, density.info = c("histogram", 
+                                                                "density", "none"), denscol = tracecol, symkey = min(x < 
+                                                                                                                        0, na.rm = TRUE) || symbreaks, densadj = 0.25, main = NULL, 
+                    xlab = NULL, ylab = NULL, lmat = NULL, lhei = NULL, lwid = NULL,
+                    NumColSideColors = 1, NumRowSideColors = 1, KeyValueName="Value",
+                    ...) 
+{
+   scale01 <- function(x, low = min(x), high = max(x)) {
+      x <- (x - low)/(high - low)
+      x
+   }
+   retval <- list()
+   scale <- if (symm && missing(scale)) 
+      "none"
+   else match.arg(scale)
+   dendrogram <- match.arg(dendrogram)
+   trace <- match.arg(trace)
+   density.info <- match.arg(density.info)
+   if (length(col) == 1 && is.character(col)) 
+      col <- get(col, mode = "function")
+   if (!missing(breaks) && (scale != "none")) 
+      warning("Using scale=\"row\" or scale=\"column\" when breaks are", 
+              "specified can produce unpredictable results.", "Please consider using only one or the other.")
+   if (is.null(Rowv) || is.na(Rowv)) 
+      Rowv <- FALSE
+   if (is.null(Colv) || is.na(Colv)) 
+      Colv <- FALSE
+   else if (Colv == "Rowv" && !isTRUE(Rowv)) 
+      Colv <- FALSE
+   if (length(di <- dim(x)) != 2 || !is.numeric(x)) 
+      stop("`x' must be a numeric matrix")
+   nr <- di[1]
+   nc <- di[2]
+   if (nr <= 1 || nc <= 1) 
+      stop("`x' must have at least 2 rows and 2 columns")
+   if (!is.numeric(margins) || length(margins) != 2) 
+      stop("`margins' must be a numeric vector of length 2")
+   if (missing(cellnote)) 
+      cellnote <- matrix("", ncol = ncol(x), nrow = nrow(x))
+   if (!inherits(Rowv, "dendrogram")) {
+      if (((!isTRUE(Rowv)) || (is.null(Rowv))) && (dendrogram %in% 
+                                                   c("both", "row"))) {
+         if (is.logical(Colv) && (Colv)) 
+            dendrogram <- "column"
+         else dedrogram <- "none"
+         warning("Discrepancy: Rowv is FALSE, while dendrogram is `", 
+                 dendrogram, "'. Omitting row dendogram.")
+      }
+   }
+   if (!inherits(Colv, "dendrogram")) {
+      if (((!isTRUE(Colv)) || (is.null(Colv))) && (dendrogram %in% 
+                                                   c("both", "column"))) {
+         if (is.logical(Rowv) && (Rowv)) 
+            dendrogram <- "row"
+         else dendrogram <- "none"
+         warning("Discrepancy: Colv is FALSE, while dendrogram is `", 
+                 dendrogram, "'. Omitting column dendogram.")
+      }
+   }
+   if (inherits(Rowv, "dendrogram")) {
+      ddr <- Rowv
+      rowInd <- order.dendrogram(ddr)
+   }
+   else if (is.integer(Rowv)) {
+      hcr <- hclustfun(distfun(x))
+      ddr <- as.dendrogram(hcr)
+      ddr <- reorder(ddr, Rowv)
+      rowInd <- order.dendrogram(ddr)
+      if (nr != length(rowInd)) 
+         stop("row dendrogram ordering gave index of wrong length")
+   }
+   else if (isTRUE(Rowv)) {
+      Rowv <- rowMeans(x, na.rm = na.rm)
+      hcr <- hclustfun(distfun(x))
+      ddr <- as.dendrogram(hcr)
+      ddr <- reorder(ddr, Rowv)
+      rowInd <- order.dendrogram(ddr)
+      if (nr != length(rowInd)) 
+         stop("row dendrogram ordering gave index of wrong length")
+   }
+   else {
+      rowInd <- nr:1
+   }
+   if (inherits(Colv, "dendrogram")) {
+      ddc <- Colv
+      colInd <- order.dendrogram(ddc)
+   }
+   else if (identical(Colv, "Rowv")) {
+      if (nr != nc) 
+         stop("Colv = \"Rowv\" but nrow(x) != ncol(x)")
+      if (exists("ddr")) {
+         ddc <- ddr
+         colInd <- order.dendrogram(ddc)
+      }
+      else colInd <- rowInd
+   }
+   else if (is.integer(Colv)) {
+      hcc <- hclustfun(distfun(if (symm) 
+         x
+         else t(x)))
+      ddc <- as.dendrogram(hcc)
+      ddc <- reorder(ddc, Colv)
+      colInd <- order.dendrogram(ddc)
+      if (nc != length(colInd)) 
+         stop("column dendrogram ordering gave index of wrong length")
+   }
+   else if (isTRUE(Colv)) {
+      Colv <- colMeans(x, na.rm = na.rm)
+      hcc <- hclustfun(distfun(if (symm) 
+         x
+         else t(x)))
+      ddc <- as.dendrogram(hcc)
+      ddc <- reorder(ddc, Colv)
+      colInd <- order.dendrogram(ddc)
+      if (nc != length(colInd)) 
+         stop("column dendrogram ordering gave index of wrong length")
+   }
+   else {
+      colInd <- 1:nc
+   }
+   retval$rowInd <- rowInd
+   retval$colInd <- colInd
+   retval$call <- match.call()
+   x <- x[rowInd, colInd]
+   x.unscaled <- x
+   cellnote <- cellnote[rowInd, colInd]
+   if (is.null(labRow)) 
+      labRow <- if (is.null(rownames(x))) 
+         (1:nr)[rowInd]
+   else rownames(x)
+   else labRow <- labRow[rowInd]
+   if (is.null(labCol)) 
+      labCol <- if (is.null(colnames(x))) 
+         (1:nc)[colInd]
+   else colnames(x)
+   else labCol <- labCol[colInd]
+   if (scale == "row") {
+      retval$rowMeans <- rm <- rowMeans(x, na.rm = na.rm)
+      x <- sweep(x, 1, rm)
+      retval$rowSDs <- sx <- apply(x, 1, sd, na.rm = na.rm)
+      x <- sweep(x, 1, sx, "/")
+   }
+   else if (scale == "column") {
+      retval$colMeans <- rm <- colMeans(x, na.rm = na.rm)
+      x <- sweep(x, 2, rm)
+      retval$colSDs <- sx <- apply(x, 2, sd, na.rm = na.rm)
+      x <- sweep(x, 2, sx, "/")
+   }
+   if (missing(breaks) || is.null(breaks) || length(breaks) < 
+       1) {
+      if (missing(col) || is.function(col)) 
+         breaks <- 16
+      else breaks <- length(col) + 1
+   }
+   if (length(breaks) == 1) {
+      if (!symbreaks) 
+         breaks <- seq(min(x, na.rm = na.rm), max(x, na.rm = na.rm), 
+                       length = breaks)
+      else {
+         extreme <- max(abs(x), na.rm = TRUE)
+         breaks <- seq(-extreme, extreme, length = breaks)
+      }
+   }
+   nbr <- length(breaks)
+   ncol <- length(breaks) - 1
+   if (class(col) == "function") 
+      col <- col(ncol)
+   min.breaks <- min(breaks)
+   max.breaks <- max(breaks)
+   x[x < min.breaks] <- min.breaks
+   x[x > max.breaks] <- max.breaks
+   if (missing(lhei) || is.null(lhei)) 
+      lhei <- c(keysize, 4)
+   if (missing(lwid) || is.null(lwid)) 
+      lwid <- c(keysize, 4)
+   if (missing(lmat) || is.null(lmat)) {
+      lmat <- rbind(4:3, 2:1)
+      
+      if (!missing(ColSideColors)) {
+         if(!is.null(ColSideColors)) {	
+            #if (!is.matrix(ColSideColors)) 
+            #stop("'ColSideColors' must be a matrix")
+            if (!is.character(ColSideColors) || dim(ColSideColors)[1] != 
+                nc) 
+               stop("'ColSideColors' dim()[2] must be of length ncol(x)")
+            lmat <- rbind(lmat[1, ] + 1, c(NA, 1), lmat[2, ] + 1)
+            #lhei <- c(lhei[1], 0.2, lhei[2])
+            lhei=c(lhei[1], 0.1*NumColSideColors, lhei[2]) 
+         }
+      }
+      if (!missing(RowSideColors)) {
+         if(!is.null(RowSideColors)) { 
+            #if (!is.matrix(RowSideColors)) 
+            #stop("'RowSideColors' must be a matrix")
+            if (!is.character(RowSideColors) || dim(RowSideColors)[1] != 
+                nr) 
+               stop("'RowSideColors' must be a character vector of length nrow(x)")
+            lmat <- cbind(lmat[, 1] + 1, c(rep(NA, nrow(lmat) - 1), 1), lmat[,2] + 1)
+            #lwid <- c(lwid[1], 0.2, lwid[2])
+            lwid <- c(lwid[1], 0.1*NumRowSideColors, lwid[2])
+         }
+      }
+      lmat[is.na(lmat)] <- 0     
+   }
+   
+   if (length(lhei) != nrow(lmat))
+      stop("lhei must have length = nrow(lmat) = ", nrow(lmat))
+   if (length(lwid) != ncol(lmat))
+      stop("lwid must have length = ncol(lmat) =", ncol(lmat))
+   op <- par(no.readonly = TRUE)
+   on.exit(par(op))
+   layout(lmat, widths = lwid, heights = lhei, respect = FALSE)     
+   
+   if (!missing(RowSideColors)) {
+      if (!is.null(RowSideColors)) {
+         #if (!is.matrix(RowSideColors)){
+         if(revC) {
+            xrowInd = rev(rowInd)	
+         } else {
+            xrowInd = rowInd	
+         }	
+         if(ncol(RowSideColors)==1) {	
+            par(mar = c(margins[1], 0, 0, 0.5))
+            image(rbind(1:nr), col = RowSideColors[,1][xrowInd], axes = FALSE)
+            axis(1,0,colnames(RowSideColors)[1],las=2,tick=F)
+         } 
+         else{
+            par(mar = c(margins[1], 0, 0, 0.5))
+            rsc = RowSideColors[xrowInd, ]
+            rsc.colors = matrix()
+            rsc.names = names(table(rsc))
+            rsc.i = 1
+            for (rsc.name in rsc.names) {
+               rsc.colors[rsc.i] = rsc.name
+               rsc[rsc == rsc.name] = rsc.i
+               rsc.i = rsc.i + 1
+            }
+            rsc = matrix(as.numeric(rsc), nrow = dim(rsc)[1])
+            image(t(rsc), col = as.vector(rsc.colors), axes = FALSE)
+            if (length(colnames(RowSideColors)) > 0) {
+               axis(1, 0:(dim(rsc)[2] - 1)/(dim(rsc)[2] - 1),
+                    colnames(RowSideColors), 
+                    las = 2, tick = FALSE)
+            }
+         }
+      }
+   }
+   
+   if (!missing(ColSideColors)) {
+      if (!is.null(ColSideColors)) {
+         #if (!is.matrix(ColSideColors)){
+         if(ncol(ColSideColors)==1) {
+            par(mar = c(0.5, 0, 0, margins[2]))
+            image(cbind(1:nc), col = ColSideColors[,1][colInd], axes = FALSE)
+            axis(2,0,colnames(ColSideColors)[1],las=2,tick=F)
+         }
+         else {    
+            par(mar = c(0.5, 0, 0, margins[2]))
+            csc = ColSideColors[colInd, ]
+            csc.colors = matrix()
+            csc.names = names(table(csc))
+            csc.i = 1
+            for (csc.name in csc.names) {
+               csc.colors[csc.i] = csc.name
+               csc[csc == csc.name] = csc.i
+               csc.i = csc.i + 1
+            }
+            csc = matrix(as.numeric(csc), nrow = dim(csc)[1])
+            image(csc, col = as.vector(csc.colors), axes = FALSE)
+            if (length(colnames(ColSideColors)) > 0) {
+               axis(2, 0:(dim(csc)[2] - 1)/(dim(csc)[2] - 1),
+                    colnames(ColSideColors), 
+                    las = 2, tick = FALSE)
+            }
+         }
+      }
+   }
+   par(mar = c(margins[1], 0, 0, margins[2]))
+   x <- t(x)
+   cellnote <- t(cellnote)
+   if (revC) {
+      iy <- nr:1
+      if (exists("ddr")) 
+         ddr <- rev(ddr)
+      x <- x[, iy]
+      cellnote <- cellnote[, iy]
+   }
+   else iy <- 1:nr
+   image(1:nc, 1:nr, x, xlim = 0.5 + c(0, nc), ylim = 0.5 + 
+            c(0, nr), axes = FALSE, xlab = "", ylab = "", col = col, 
+         breaks = breaks, ...)
+   retval$carpet <- x
+   if (exists("ddr")) 
+      retval$rowDendrogram <- ddr
+   if (exists("ddc")) 
+      retval$colDendrogram <- ddc
+   retval$breaks <- breaks
+   retval$col <- col
+   if (!checkinvalid(na.color) & any(is.na(x))) {
+      mmat <- ifelse(is.na(x), 1, NA)
+      image(1:nc, 1:nr, mmat, axes = FALSE, xlab = "", ylab = "", 
+            col = na.color, add = TRUE)
+   }
+   axis(1, 1:nc, labels = labCol, las = 2, line = -0.5, tick = 0, 
+        cex.axis = cexCol)
+   if (!is.null(xlab)) 
+      mtext(xlab, side = 1, line = margins[1] - 1.25)
+   axis(4, iy, labels = labRow, las = 2, line = -0.5, tick = 0, 
+        cex.axis = cexRow)
+   if (!is.null(ylab)) 
+      mtext(ylab, side = 4, line = margins[2] - 1.25)
+   if (!missing(add.expr)) 
+      eval(substitute(add.expr))
+   if (!missing(colsep)) 
+      for (csep in colsep) rect(xleft = csep + 0.5, ybottom = rep(0, 
+                                                                  length(csep)), xright = csep + 0.5 + sepwidth[1], 
+                                ytop = rep(ncol(x) + 1, csep), lty = 1, lwd = 1, 
+                                col = sepcolor, border = sepcolor)
+   if (!missing(rowsep)) 
+      for (rsep in rowsep) rect(xleft = 0, ybottom = (ncol(x) + 
+                                                         1 - rsep) - 0.5, xright = nrow(x) + 1, ytop = (ncol(x) + 
+                                                                                                           1 - rsep) - 0.5 - sepwidth[2], lty = 1, lwd = 1, 
+                                col = sepcolor, border = sepcolor)
+   min.scale <- min(breaks)
+   max.scale <- max(breaks)
+   x.scaled <- scale01(t(x), min.scale, max.scale)
+   if (trace %in% c("both", "column")) {
+      retval$vline <- vline
+      vline.vals <- scale01(vline, min.scale, max.scale)
+      for (i in colInd) {
+         if (!is.null(vline)) {
+            abline(v = i - 0.5 + vline.vals, col = linecol, 
+                   lty = 2)
+         }
+         xv <- rep(i, nrow(x.scaled)) + x.scaled[, i] - 0.5
+         xv <- c(xv[1], xv)
+         yv <- 1:length(xv) - 0.5
+         lines(x = xv, y = yv, lwd = 1, col = tracecol, type = "s")
+      }
+   }
+   if (trace %in% c("both", "row")) {
+      retval$hline <- hline
+      hline.vals <- scale01(hline, min.scale, max.scale)
+      for (i in rowInd) {
+         if (!is.null(hline)) {
+            abline(h = i + hline, col = linecol, lty = 2)
+         }
+         yv <- rep(i, ncol(x.scaled)) + x.scaled[i, ] - 0.5
+         yv <- rev(c(yv[1], yv))
+         xv <- length(yv):1 - 0.5
+         lines(x = xv, y = yv, lwd = 1, col = tracecol, type = "s")
+      }
+   }
+   if (!missing(cellnote)) 
+      text(x = c(row(cellnote)), y = c(col(cellnote)), labels = c(cellnote), 
+           col = notecol, cex = notecex)
+   par(mar = c(margins[1], 0, 0, 0))
+   if (dendrogram %in% c("both", "row")) {
+      plot(ddr, horiz = TRUE, axes = FALSE, yaxs = "i", leaflab = "none")
+   }
+   else plot.new()
+   par(mar = c(0, 0, if (!is.null(main)) 5 else 0, margins[2]))
+   if (dendrogram %in% c("both", "column")) {
+      plot(ddc, axes = FALSE, xaxs = "i", leaflab = "none")
+   }
+   else plot.new()
+   if (!is.null(main)) 
+      title(main, cex.main = 1.5 * op[["cex.main"]])
+   if (key) {
+      par(mar = c(5, 4, 2, 1), cex = 0.75)
+      tmpbreaks <- breaks
+      if (symkey) {
+         max.raw <- max(abs(c(x, breaks)), na.rm = TRUE)
+         min.raw <- -max.raw
+         tmpbreaks[1] <- -max(abs(x))
+         tmpbreaks[length(tmpbreaks)] <- max(abs(x))
+      }
+      else {
+         min.raw <- min(x, na.rm = TRUE)
+         max.raw <- max(x, na.rm = TRUE)
+      }
+      z <- seq(min.raw, max.raw, length = length(col))
+      image(z = matrix(z, ncol = 1), col = col, breaks = tmpbreaks, 
+            xaxt = "n", yaxt = "n")
+      par(usr = c(0, 1, 0, 1))
+      lv <- pretty(breaks)
+      xv <- scale01(as.numeric(lv), min.raw, max.raw)
+      axis(1, at = xv, labels = lv)
+      if (scale == "row") 
+         mtext(side = 1, "Row Z-Score", line = 2)
+      else if (scale == "column") 
+         mtext(side = 1, "Column Z-Score", line = 2)
+      else mtext(side = 1, KeyValueName, line = 2)
+      if (density.info == "density") {
+         dens <- density(x, adjust = densadj, na.rm = TRUE)
+         omit <- dens$x < min(breaks) | dens$x > max(breaks)
+         dens$x <- dens$x[-omit]
+         dens$y <- dens$y[-omit]
+         dens$x <- scale01(dens$x, min.raw, max.raw)
+         lines(dens$x, dens$y/max(dens$y) * 0.95, col = denscol, 
+               lwd = 1)
+         axis(2, at = pretty(dens$y)/max(dens$y) * 0.95, pretty(dens$y))
+         title("Color Key\nand Density Plot")
+         par(cex = 0.5)
+         mtext(side = 2, "Density", line = 2)
+      }
+      else if (density.info == "histogram") {
+         h <- hist(x, plot = FALSE, breaks = breaks)
+         hx <- scale01(breaks, min.raw, max.raw)
+         hy <- c(h$counts, h$counts[length(h$counts)])
+         lines(hx, hy/max(hy) * 0.95, lwd = 1, type = "s", 
+               col = denscol)
+         axis(2, at = pretty(hy)/max(hy) * 0.95, pretty(hy))
+         title("Color Key\nand Histogram")
+         par(cex = 0.5)
+         mtext(side = 2, "Count", line = 2)
+      }
+      else title("Color Key")
+   }
+   else plot.new()
+   retval$colorTable <- data.frame(low = retval$breaks[-length(retval$breaks)], 
+                                   high = retval$breaks[-1], color = retval$col)
+   invisible(retval)
+}

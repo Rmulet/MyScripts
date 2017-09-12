@@ -1,42 +1,36 @@
 #!/bin/bash
 
-# GENOME ANALYZER 0.2 - Calls the VCFmerger.sh script for the entire genome
-
-# UPDATE 20161025: Feature for specific chromosome analysis added
-# UPDATE 20161027: Implemented the MASK feature. Compatibility with Andromeda evaluated and minor issues fixed.
-# UPDATE 20161130: Fixed issues with chromosome Y: CNVs are removed and ploidy is verified before pseudo-diploic conversion.
-# UPDATE 20161214: Fixed issue with the mask extraction (chr1 and chr2)
+#--------------------------------------------------------------------------------------------------
+#Get input arguments
+#--------------------------------------------------------------------------------------------------
 
 display_usage() {
-	echo -e "\nThis script analyses patterns of variation along the entire genome by repeatedly calling VCFmerger.sh for each chromosome"
-	echo -e "\nUsage:\n $(basename "$0") [-w --window] [-msk --mask] [-dl --download]"
-	echo -e "\nOptions:\n -w, --window \t Specifies the size of the window to be analyzed [10000]"
-	echo -e " -msk, --mask \t Indicates what 1000 Genomes Project mask should be used (Pilot/Strict) [Pilot]"
-	echo -e " -dl, --download \t Determines whether the necessary files should be downloaded from predefined URLs [FALSE]"
-	echo -e " -pop, --population \t Conducts the analysis by population (26/5/name/FALSE) [FALSE]"
-	echo -e " -chr, --chromosome \t Analyses a single chromosome (in format NN, e.g. 22) [ALL]"
-	}
 
-#####################################
-## ARGUMENT EVALUATION AND PARSING ##
-#####################################
+cat << HEREDOC
 
-## ARGUMENT EVALUATION ##
+	This script analyses patterns of variation along the entire genome by repeatedly calling VCFmerger.sh for each chromosome
 
-# Check whether user had supplied -h or --help . If yes display usage
-if [[ ( $1 == "--help") ||  $1 == "-h" ]]
-then
-	display_usage
-	exit 0
-fi
+	Usage: exact_windows.sh [-w --window] [-msk --mask] [-dl --download]
 
-## ARGUMENT PARSING ##
+	Options: 
+	-w, --window			Specifies the size of the window to be analyzed [10000]
+	-msk, --mask			Indicates what 1000 Genomes Project mask should be used (Pilot/Strict) [Pilot]
+	-dl, --download 		Determines whether the necessary files should be downloaded from predefined URLs [FALSE]
+	-pop, --population		Conducts the analysis by population (26/5/name/ALL) [ALL]
+	-chr, --chromosome		Analyses a single chromosome (in format NN, e.g. 22) [ALL]
+	-db, --database			Specifies the name of the data table where the results will be stored [GenomicsWhole]"
+
+HEREDOC
+
+}
 
 WINDOW=10000
 MASK="pilot"
-POP="FALSE"
+POP="ALL"
 DL="FALSE"
 CHR="`seq 1 22` X Y" # ALL chromosomes
+MKT=TRUE # MKT will be calculated by default
+DB="GenomicsWhole"
 
 while [[ $# -gt 1 ]] # next two arguments (window + size)
 
@@ -69,15 +63,15 @@ do
 		echo -e "Only chromosome $CHR will be analysed\n"
 		shift
 		;;
+		-h|--help)
+		display_usage
+		exit
+		;;
 		*) # No more options
 		;;
 	esac
 shift
 done
-
-# Print stoud on the screen and keep a copy in a log file
-rm -f WindowsAnalyzer.log
-exec > >(tee -a WindowsAnalyzer.log) 2>&1
 
 ##############################
 ## VARIABLES AND DATA PATHS ##
@@ -94,23 +88,16 @@ finaldir="$WORKING/Final" # Contains GFF files
 BCFTOOLS="/home/roger/Software/bcftools"
 
 maskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
-echo $maskfile
 
-if [ "$DL" == "TRUE" ]; then # DOWNLOAD?
-	echo "The files required for the analysis will be downloaded"
-	cd $gpraw
-	wget -nc -nd -r -l 1 -A "ALL.chr*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/
-	cd $gpdat/Others
-	wget -nc ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/integrated_call_samples_v3.20130502.ALL.panel -O "PopulationIndividualsList.panel"
-	cd $alnraw
-	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.mfa.gz,chr$i.mfa.gz http://pipeline.lbl.gov/data/hg19_panTro4/ # Alignments - VISTA Browser
-	wget -e robots=off -nc -nd -r -l1 -np -A chr$i.fa.gz,chr$i.fa.gz ftp://hgdownload.cse.ucsc.edu/goldenPath/hg19/chromosomes/
-	cd $gpdata/Masks
-	wget -nd -r -l0 -np -A "*mask.whole*" -R "index.html*","*combined*" ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/release/20130502/supporting/accessible_genome_masks/
-fi
+######################
+## SCRIPT EXECUTION ##
+######################
+
+## Generate a fake VCF file
 
 genome_analysis() {
 	for i in $CHR; do
+
 		# POLYMORPHISM #
 		echo -e "Processing polymorphism data: chr$i"
 		gpfile=chr$i\_gp.vcf.gz # Name of the filtered file
@@ -124,6 +111,39 @@ genome_analysis() {
 			tabix -p vcf $gpfile
 		fi
 
+		# GENERATION OF MASKED POSITIONS FILE
+
+		MASK_POS=$gpdat/Masks/POS/chr$i.pos_notac.vcf.gz
+		if [[ ! -e $MASK_POS ]]; then
+		
+			NSAMPLES=$(bcftools query -l $gpdat/$gpfile | wc -l)	
+			SIZE=$(grep chr$i $gpdat/Masks/hg19.chrom.sizes | cut -f2)
+			START=$(grep chr$i $maskfile | head -1 | cut -f2)
+
+			# awk -v var="chr$i" '$1==var' $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask
+			echo -e "Extracting masked coordinates in chr$i"
+			echo -e "chr$i\t$START\t$SIZE" > chr${i}_total.bed
+			bedtools subtract -a chr${i}_total.bed -b $maskfile > chr${i}_notac.bed
+
+			time awk -v var="chr$i" '$1==var{S=int($2)+1;E=($3);for(i=S;i<=E;++i) printf("%s %d %d\n",$1,i,i);}' chr${i}_notac.bed | sort | uniq | sort -t ' ' -k1,1 -k2,2n > $gpdat/Masks/POS/chr$i.pos_notac.bed
+			rm chr${i}_total.bed chr${i}_notac.bed
+
+			echo -e "Generating VCF file with masked positions of chr$i"
+			echo "##fileformat=VCFv4.1\n" > $gpdat/Masks/POS/chr$i.pos_notac.vcf
+			echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype"' >> $gpdat/Masks/POS/chr$i.pos_notac.vcf
+			bcftools view -h $gpdat/$gpfile | grep -v '##' >> $gpdat/Masks/POS/chr$i.pos_notac.vcf # Create the header of the file
+			time cat $gpdat/Masks/POS/chr$i.pos_notac.bed | while read -a P; do echo -e -n "${P[0]}\t${P[1]}\t.\t" && samtools faidx /ucsc/hg19/hg19.fa "${P[0]}:${P[1]}-${P[1]}"\
+			| grep -v '>' | awk -v N=$NSAMPLES 'BEGIN{NSAMPLES=N;} {printf("%s\tN\t.\t.\t.\tGT",$0); for(i=1;i<=NSAMPLES;i++) printf("\t./."); printf("\n");}'; done >> $gpdat/Masks/POS/chr$i.pos_notac.vcf
+
+			bgzip $gpdat/Masks/POS/chr${i}.pos_notac.vcf
+			tabix -p vcf $MASK_POS
+			
+		fi
+
+		exit
+
+		# FILTERING SEXUAL CHROMOSOMES
+
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
 			echo -e "Excluding males from chromosome X"
 			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',')
@@ -131,6 +151,11 @@ genome_analysis() {
 			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
 			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile
+
+			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $MASK_POS > $gpdat/Masks/POS/chr$i.pos_temp.vcf.gz # Remove female individuals
+			mv $gpdat/Masks/POS/chr$i.pos_temp.vcf.gz $MASK_POS
+			tabix -p vcf $MASK_POS
+
 		elif [[ "$i" == "Y" ]] && [[ $(zcat $gpfile | grep -v '#' | head -1 | awk '{if ($10 ~ /[0-4.]\|[0-4.]/) print "DIPLOID"; else print "HAPLOID"}') == "HAPLOID" ]]; then
 			echo -e "Converting chromosome Y to pseudo-diploid"
 			zcat $gpfile | awk '$5 !~ "<CN"' |  perl -pe 's/\t([0-4.])(?=[\n|\t])/\t\1\|\1/g' > chr$i.temp.vcf # Duplicate haploid individuals
@@ -139,18 +164,33 @@ genome_analysis() {
 			tabix -p vcf $gpfile
 		fi
 
-		if [ "$POP" != "FALSE" ]; then # Note that "PopulationIndividualsList.panel" is assumed to integrated_call_samples_v3ontain
+		# FILTERING BY POPULATION
+
+		if [ "$POP" != "ALL" ]; then # Note that "PopulationIndividualsList.panel" is assumed to integrated_call_samples_v3ontain
 			popname=$1
-			echo "1"
 			popins=$(cd $gpdat/Others && grep $popname PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed 's/,$//' )  # List of individuals in that population
-			echo "Extracting the individuals of the selected population: $popname"
-			if [ ! -e "chr$i$popname.vcf.gz" ]; then			
+
+			if [ ! -e "chr$i$popname.vcf.gz" ]; then		
+				echo "Extracting the individuals from $gpfile of the selected population: $popname"; sleep 2
 				$BCFTOOLS/bcftools view -Oz --force-samples -s $popins chr$i\_gp.vcf.gz > chr$i$popname.vcf.gz # Some have been removed because they are inbred (force-samples to skip)
 				tabix -p vcf chr$i$popname.vcf.gz
+
 			fi
+
+			if [ ! -e $gpdat/Masks/POS/chr$i${popname}_notac.vcf.gz ]; then
+				echo "Extracting the individuals from $MASK_FILE of the selected population: $popname"; sleep 2
+				$BCFTOOLS/bcftools view -Oz --force-samples -s $popins $MASK_POS > $gpdat/Masks/POS/chr$i${popname}_notac.vcf.gz
+				tabix -p vcf $gpdat/Masks/POS/chr$i${popname}_notac.vcf.gz
+
+			fi
+
 			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the file generated for that population
+			MASK_FILE=$gpdat/Masks/POS/chr$i${popname}_notac.vcf.gz
 			echo $gpfile	
+
 		fi
+
+		exit
 
 		 # DIVERGENCE #
 		echo -e "Processing divergence data: chr$i"
@@ -175,34 +215,48 @@ genome_analysis() {
 		fi			
 
 		# MERGE AND ANALYSIS #
-		echo -e "Preparing the accessibility mask for chr$i"
-		awk -v var="chr$i" '$1==var' $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask.		
-		echo -e "Analysing polymorphism and divergence in chr$i"
 
-        if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization (multiple instances of Popgenome)
+        if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization IF only one chr is analyzed
             mkdir -p $finaldir/chr$i
             ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i # Link to the GFF file
-			ln -s $finaldir/$MASK\_mask.chr$i.bed $finaldir/chr$i # Link to the mask file
             finaldir="$WORKING/Final/chr$CHR"
 			cd $finaldir
         fi
-	
-		if [[ -n $popname ]]; then	
-		VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db WindowsData_chr$i -pop $popname # Merges and analyzes variation data
-		else 
-                VCFmerger.sh $MASK\_mask.chr$i.bed $gpdat/$gpfile $alndat/$alnfile -w $WINDOW -db WindowsData_chr$i
-		fi	
-	
-		if [[ $? -ne 0 ]]; then # Stop the execution of the script if VCFmerger fails
-			echo 'Error: VCFmerger.sh failed!'
-			exit -1
-		fi
+		
+#		bedtools intersect -v -a $gpfile -b $gpdat/Masks/POS/chr$i.pos_masked.bed > ${gpfile%%.vcf.gz}_masked.vcf.gz # Remove masked positions
+#		gpfile=${gpfile%%.vcf.gz}_masked.vcf.gz
 
-		# The $popname variable will be ommitted if it is not declared (i.e. analysis conducted for 2,504 individuals)
-		# By default, the results will be stored in separate tables. To merge them, remove $i from Genomics$i$popname.
-		echo -e "Analysis of chr$i complete.\n"
+		SIZE=$(grep chr$i $gpdat/Masks/hg19.chrom.sizes | cut -f2)
+
+		for (( pos1=1 ; pos1 <= $SIZE ; pos1=pos1+$WINDOW )); do
+
+			# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
+			# The genome accessibility mask is in exclusive 1-based format, i.e. the last position is not included [half open]. 
+			# Since bcftools assumes inclusive 1-based format [closed], we subtract 1 from the end coordinate.
+			pos2 = $((pos1+$WINDOW-1))
+			chrom=$i
+			bcftools merge -Oz --missing-to-ref -o merge.$pos1.vcf.gz -r $chrom:$pos1-$pos2 $gpdat/$gpfile $alndat/$alnfile
+
+			if [[ $? -ne 0 ]]; then
+				echo 'Error: Bcftools merge failed!'
+				exit -1
+			else
+				echo -e "Files merged: merge.$pos1.vcf.gz generated"
+			fi
+	
+			tabix -p vcf merge.$pos1.vcf.gz # Tabixing for analysis with PopGenome
+
+			# R ANALYSIS OF NUCLEOTIDE VARIATION:
+			# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
+
+			echo merge.$pos1.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP
+			VCFAnalysis.R merge.$pos1.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
+
+		done
+
 	done
-	}
+
+}
 
 #############################
 ## ANALYSIS BY POPULATIONS ##
@@ -225,3 +279,5 @@ elif [ "$POP" == "26" ]; then
 else
 	genome_analysis $POP
 fi
+
+
