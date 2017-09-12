@@ -126,9 +126,8 @@ genome_analysis() {
 
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
 			echo -e "Excluding males from chromosome X"
-			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',')
-			echo $fem
-			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove female individuals
+			fem=$(cd $gpdat/Others && grep "female" PopulationIndividualsList.panel | cut -f1 | tr '\n' ',' | sed "s/,$//" )
+			$BCFTOOLS/bcftools view -Oz --force-samples -s $fem $gpfile > chr$i.temp.vcf.gz # Remove male individuals
 			mv chr$i.temp.vcf.gz $gpfile
 			tabix -p vcf $gpfile
 		elif [[ "$i" == "Y" ]] && [[ $(zcat $gpfile | grep -v '#' | head -1 | awk '{if ($10 ~ /[0-4.]\|[0-4.]/) print "DIPLOID"; else print "HAPLOID"}') == "HAPLOID" ]]; then

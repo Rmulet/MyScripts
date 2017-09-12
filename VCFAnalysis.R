@@ -119,7 +119,8 @@ MAF.df <- data.frame(POS=names(MAF),MAF=unname(MAF)) # Position and MAF of biall
 
 # IDENTIFY ANCESTRAL ALLELES (AA) FOR SNPS IN THE REGION
 library(stringr)
-temp <- system(sprintf('gunzip -c %s | grep -v "##" | cut -f2,4,8',filename),intern=TRUE) # Extract all variants from the merge.vcf.gz file
+# Extract all variants from the merge.vcf.gz file
+temp <- system(sprintf('gunzip -c %s | grep -v "##" | cut -f2,4,8',filename),intern=TRUE) # Remove commented lines to prevent errors
 gpimport <- read.table(textConnection(temp),sep="\t",stringsAsFactors = FALSE,header=TRUE)
 # gpimport <- read.table("gpimport.txt",sep="\t",stringsAsFactors = FALSE,header=TRUE)
 gpances <- toupper(sapply(gpimport[,3],function(x){str_match(x,"AA=([:alpha:])\\|")[2]},USE.NAMES=FALSE)) # Capture the ancestral allele
