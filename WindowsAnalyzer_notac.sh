@@ -78,7 +78,7 @@ done
 ## VARIABLES AND DATA PATHS ##
 ##############################
 
-WORKING="$HOME/Genomics"
+WORKING="/data/roger/Genomics"
 
 gpraw="$WORKING/1000GP/Chromosomes" # VCF files from 1000 GP divided by chromosomes
 gpdat="$WORKING/1000GP" # No files required 
@@ -86,7 +86,7 @@ alnraw="$WORKING/Alns/Chromosomes" # Human-chimp alignment (MFA.GZ) divided by c
 alndat="$WORKING/Alns" # Contains FASTA files (FA.GZ/FA)
 finaldir="$WORKING/Final" # Contains GFF files
 
-BCFTOOLS="/home/roger/Software/bcftools"
+BCFTOOLS=/tools/bcftools/
 
 maskfile=$gpdat/Masks/$(cd $gpdat/Masks/ && ls -d *$MASK\_mask.whole_genome.bed) # Depends on the chosen criteria. Underscore must be escaped.
 
@@ -185,8 +185,8 @@ genome_analysis() {
 
 			fi
 
+			ln -sf $WORKING/Final/gffseq_chr$i.RData $finaldir  # Link to the GFF file		
 			cd $finaldir
-			ln -sf $finaldir/gffseq_chr$i.RData . # Link to the GFF file			
 
         fi
 
@@ -251,7 +251,7 @@ genome_analysis() {
 				exit -1
 			fi
 
-			rm chr${i}_win.bed chr${i}_notac.bed merge.${pos1}* # chr$i.pos_notac.vcf.gz 
+			rm chr${i}_win.bed chr${i}_${pos1}_notac.bed merge.${pos1}* # chr$i.pos_notac.vcf.gz 
 
 		done
 
