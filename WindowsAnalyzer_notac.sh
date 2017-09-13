@@ -186,7 +186,7 @@ genome_analysis() {
 			fi
 
 			cd $finaldir
-			ln -sf $finaldir/gffseq_chr$i.RData . # Link to the GFF file			
+			ln -sf ../gffseq_chr$i.RData . # Link to the GFF file			
 
         fi
 
