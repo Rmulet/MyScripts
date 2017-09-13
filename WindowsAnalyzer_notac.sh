@@ -39,12 +39,12 @@ do
 	case "$1" in
 		-w|--window)
 		WINDOW="$2" # $1 has the name, $2 the value
-		echo -e "- Window size set to $WINDOW"
+		echo -e "- Window size set to $WINDOW\n"
 		shift # next two arguments (window + size)
 		;;
 		-msk|--mask)
 		MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
-		echo -e "- 1000 GP mask set to $MASK"
+		echo -e "- 1000 GP mask set to $MASK\n"
 		shift
 		;;
 		-dl|--download)
@@ -176,18 +176,24 @@ genome_analysis() {
 
         if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization IF only one chr is analyzed
             mkdir -p $finaldir/chr$i
-            ln -sf $finaldir/gffseq_chr$i.RData $finaldir/chr$i # Link to the GFF file
-            finaldir="$WORKING/Final/chr$CHR"
+	        finaldir="$WORKING/Final/chr$i"
+
+			if [[ "$POP" != "ALL" ]]; then # To allow parallelization for multiple populations
+
+	            mkdir -p $finaldir/chr${i}_${popname}
+		        finaldir="$WORKING/Final/chr$i/chr${i}_${popname}"
+
+			fi
+
 			cd $finaldir
+			ln -sf $finaldir/gffseq_chr$i.RData . # Link to the GFF file			
+
         fi
-	
-#		bedtools intersect -v -a $gpfile -b $gpdat/Masks/POS/chr$i.pos_masked.bed > ${gpfile%%.vcf.gz}_masked.vcf.gz # Remove masked positions
-#		gpfile=${gpfile%%.vcf.gz}_masked.vcf.gz
 
-		SIZE=$(grep chr$i $gpdat/Masks/hg19.chrom.sizes | cut -f2)
 		START=$(grep chr$i $maskfile | head -1 | cut -f2)
+		END=$(grep chr$i $maskfile | tail -1 | cut -f2)
 
-		for (( pos1=$START ; pos1 <= $SIZE ; pos1=pos1+$WINDOW )); do
+		for (( pos1=$START ; pos1 <= $END ; pos1=pos1+$WINDOW )); do
 
 			# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
 			# The genome accessibility mask is in exclusive 1-based format, i.e. the last position is not included [half open]. 
@@ -209,39 +215,43 @@ genome_analysis() {
 			MASK_POS=$gpdat/Masks/POS/chr$i.pos_notac.vcf.gz
 			NSAMPLES=$(bcftools query -l merge.${pos1}.vcf | wc -l) # As many samples as merge
 
-			# awk -v var="chr$i" '$1==var' $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask
 			echo -e "Extracting masked coordinates in chr$i:$pos1-$pos2"
 			echo -e "chr$i\t$pos1\t$pos2" > chr${i}_win.bed 
 			# We remove -1 from the END column of the bed file because the mask is actually 1-based and the first base is included
-			bedtools subtract -a chr${i}_win.bed -b <(awk -v var="chr$i" -v OFS='\t' '$1==var{print($1,$2-1,$3)}' $maskfile) | sed "s/^chr//" > chr${i}_notac.bed
+			bedtools subtract -a chr${i}_win.bed -b <(awk -v var="chr$i" -v OFS='\t' '$1==var{print($1,$2-1,$3)}' $maskfile) | sed "s/^chr//" > chr${i}_${pos1}_notac.bed
+			NOTAC_COUNTS=$(awk '{sum=sum+($3-$2)}END{print(sum)}' chr${i}_${pos1}_notac.bed) 
 
-			awk -v var="$i" '$1==var{S=int($2)+1;E=($3);for(i=S;i<=E;++i) printf("%s %d %d\n",$1,i,i);}' chr${i}_notac.bed | sort | uniq | sort -t ' ' -k1,1 -k2,2n > chr$i.pos_notac.bed
-
-			echo -e "Generating VCF file with masked positions of chr$i:$pos1-$pos2"
-			echo -e "##fileformat=VCFv4.1" > chr$i.pos_notac.vcf
-			echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype"' >> chr$i.pos_notac.vcf
-			bcftools view -h merge.$pos1.vcf | grep -v '##' >> chr$i.pos_notac.vcf # Create the header of the file
-			time sed "s/^chr//" chr$i.pos_notac.bed | while read -a P; do echo -e -n "${P[0]}\t${P[1]}\t.\t" && samtools faidx /ucsc/hg19/hg19.fa "chr${P[0]}:${P[1]}-${P[1]}"\
-			| grep -v '>' | awk -v N=$NSAMPLES 'BEGIN{NSAMPLES=N;} {printf("%s\tN\t.\t.\t.\tGT",$0); for(i=1;i<=NSAMPLES;i++) printf("\t./."); printf("\n");}'; done >> chr$i.pos_notac.vcf
-
-			bgzip -f chr$i.pos_notac.vcf; tabix -p vcf chr$i.pos_notac.vcf.gz
+#			awk -v var="$i" '$1==var{S=int($2)+1;E=($3);for(i=S;i<=E;++i) printf("%s %d %d\n",$1,i,i);}' chr${i}_${pos1}_notac.bed | sort | uniq | sort -t ' ' -k1,1 -k2,2n > chr${i}_${pos1}.pos_notac.bed
+#			echo -e "Generating VCF file with masked positions of chr$i:$pos1-$pos2"
+#			echo -e "##fileformat=VCFv4.1" > chr${i}_${pos1}.pos_notac.vcf
+#			echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype"' >> chr${i}_${pos1}.pos_notac.vcf
+#			bcftools view -h merge.$pos1.vcf | grep -v '##' >> chr${i}_${pos1}.pos_notac.vcf # Create the header of the file
+			# It takes longer, but to add the correct base instead of "." : && samtools faidx /ucsc/hg19/hg19.fa "chr${P[0]}:${P[1]}-${P[1]}"
+#			time sed "s/^chr//" chr$i.pos_notac.bed | while read -a P; do echo -e -n "${P[0]}\t${P[1]}\t.\t."\
+#			| awk -v N=$NSAMPLES 'BEGIN{NSAMPLES=N;} {printf("%s\tN\t.\t.\t.\tGT",$0); for(i=1;i<=NSAMPLES;i++) printf("\t./."); printf("\n");}'; done >> chr${i}_${pos1}.pos_notac.vcf
+#			bgzip -f chr${i}_${pos1}.pos_notac.vcf; tabix -p vcf chr${i}_${pos1}.pos_notac.vcf.gz
 
 			# REMOVE NON-ACCESSIBLE POSITIONS AND MERGE
 
-			bedtools intersect -header -v -a merge.$pos1.vcf -b chr${i}_notac.bed 2> /dev/null > merge.${pos1}_ac.vcf
+			bedtools intersect -header -v -a merge.$pos1.vcf -b chr${i}_${pos1}_notac.bed 2> /dev/null > merge.${pos1}_ac.vcf
 
 			bgzip -f merge.${pos1}_ac.vcf; tabix -p vcf merge.${pos1}_ac.vcf.gz 
 
-			bcftools concat --allow-overlaps -Oz -o merge.${pos1}_masked.vcf.gz merge.${pos1}_ac.vcf.gz chr$i.pos_notac.vcf.gz
-			tabix -p vcf merge.${pos1}_masked.vcf.gz
+#			bcftools concat --allow-overlaps -Oz -o merge.${pos1}_masked.vcf.gz merge.${pos1}_ac.vcf.gz chr$i.pos_notac.vcf.gz
+#			tabix -p vcf merge.${pos1}_masked.vcf.gz
 
 			# R ANALYSIS OF NUCLEOTIDE VARIATION:
-			# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
+			# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (in VCFAnalysis.R).
 
-			echo merge.$pos1.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP
-			VCFAnalysis_sonia.R merge.${pos1}_masked.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
+			echo merge.${pos1}_ac.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP $NOTAC_COUNTS # Use merge.${pos1}_masked.vcf.gz if unknowns are included
+			VCFAnalysis_notac.R merge.${pos1}_ac.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP $NOTAC_COUNTS  # Avoid the message visualization!! 
 
-			rm chr${i}_win.bed chr${i}_notac.bed chr$i.pos_notac.vcf.gz merge.${pos1}* 
+			if [[ $? -ne 0 ]]; then
+				echo 'Error: VCFAnalysis failed!'
+				exit -1
+			fi
+
+			rm chr${i}_win.bed chr${i}_notac.bed merge.${pos1}* # chr$i.pos_notac.vcf.gz 
 
 		done
 
