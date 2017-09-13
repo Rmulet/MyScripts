@@ -40,23 +40,23 @@ MK <- args[7] # Calculate MKT
 pop <- args[8] # Population name
 
 ################## FOR TESTS START HERE ##################
- library("PopGenome")
- setwd("/home/scasillas/Results_Windows/chrX")
-# #[1] "merge.1.vcf.gz"    "22"                "16847853"         
-# #[4] "16861622"          "10000"             "WindowsData_chr22"
-# #[7] "TRUE"              "CEU"  
- filename <- "merge.1.vcf.gz"
- chrom <- "X"
- ini <- 347642-1
- end <- 362360-1
- wsize <- 10000; 
- db <- "WindowsData_chrX"
- MK <- TRUE
- pop <- "CEU"
-
-#if (ini<46164109) {
-#  quit()
-#}
+#  library("PopGenome")
+#  setwd("/home/scasillas/Results_Windows/chrX")
+# # #[1] "merge.1.vcf.gz"    "22"                "16847853"         
+# # #[4] "16861622"          "10000"             "WindowsData_chr22"
+# # #[7] "TRUE"              "CEU"  
+#  filename <- "merge.1.vcf.gz"
+#  chrom <- "X"
+#  ini <- 347642-1
+#  end <- 362360-1
+#  wsize <- 10000; 
+#  db <- "WindowsData_chrX"
+#  MK <- TRUE
+#  pop <- "CEU"
+# 
+# #if (ini<46164109) {
+# #  quit()
+# #}
 
 ##########################################################
 
@@ -387,25 +387,5 @@ export <- cbind(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),NROW(wi
 
 write.table(export,file=paste(db,"_",pop,"_",wsize,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
 col.names=!file.exists(paste(db,"_",pop,"_",wsize,".tab",sep=""))) # Column names written if file does not exist
-
-#if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
-
-#	suppressMessages(library(DBI))
-#	suppressMessages(library(RMySQL))
-	
-#	con <- dbConnect(RMySQL::MySQL(),
-#       user="roger", password="RM333",
-#       dbname="PEGH", host="158.109.215.40")
-
-#	first <- !dbExistsTable(con,db)
-
-#	dbWriteTable(con,value=export,name=db,row.names=F,append=T)
-
-#	if (first == TRUE) # Remove if we want to concatenate various chromosomes
-#	dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
-#	dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
-
-#	on.exit(dbDisconnect(con))
-#}
 
 print(Sys.time() - start.time)

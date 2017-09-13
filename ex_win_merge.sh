@@ -24,6 +24,7 @@ HEREDOC
 
 }
 
+echo ''
 WINDOW=10000
 MASK="pilot"
 POP="ALL"
@@ -38,29 +39,29 @@ do
 	case "$1" in
 		-w|--window)
 		WINDOW="$2" # $1 has the name, $2 the value
-		echo -e "Window size set to $WINDOW"
+		echo -e "- Window size set to $WINDOW"
 		shift # next two arguments (window + size)
 		;;
 		-msk|--mask)
 		MASK=$(echo "$2" | tr '[:upper:]' '[:lower:]') # $1 has the name, $2 the value
-		echo -e "1000 GP mask set to $MASK"
+		echo -e "- 1000 GP mask set to $MASK"
 		shift
 		;;
 		-dl|--download)
 		DL="$2" # $1 has the name, $2 the value
-		echo -e "ALL necessary files will be downloaded: $DL"
+		echo -e "- ALL necessary files will be downloaded: $DL"
 		shift
 		;;
 		-pop|--population)
 		POP="$2" # $1 has the name, $2 the value
-		if [ "$POP" == "26" ]; then echo -e "All populations will be analysed\n"
-		elif [ "$POP" == "5" ]; then echo -e "The 5 super-populations will be analysed\n"
-		else echo -e "Population $POP will be analysed\n"; fi
+		if [ "$POP" == "26" ]; then echo -e "- All populations will be analysed\n"
+		elif [ "$POP" == "5" ]; then echo -e "- The 5 super-populations will be analysed\n"
+		else echo -e "- Population $POP will be analysed\n"; fi
 		shift
 		;;		
 		-chr|--chromosome)
 		CHR="$2" # $1 has the name, $2 the value
-		echo -e "Only chromosome $CHR will be analysed\n"
+		echo -e "- Only chromosome $CHR will be analysed\n"
 		shift
 		;;
 		-h|--help)
@@ -146,7 +147,6 @@ genome_analysis() {
 			fi
 
 			gpfile=chr$i$popname.vcf.gz # In population mode, then gpfile is the file generated for that population
-			echo $gpfile	
 
 		fi
 
@@ -176,7 +176,7 @@ genome_analysis() {
 
         if [[ "$CHR" != `seq 1 22` ]]; then # To allow external parallelization IF only one chr is analyzed
             mkdir -p $finaldir/chr$i
-            ln -s $finaldir/gffseq_chr$i.RData $finaldir/chr$i # Link to the GFF file
+            ln -sf $finaldir/gffseq_chr$i.RData $finaldir/chr$i # Link to the GFF file
             finaldir="$WORKING/Final/chr$CHR"
 			cd $finaldir
         fi
@@ -201,46 +201,47 @@ genome_analysis() {
 				echo 'Error: Bcftools merge failed!'
 				exit -1
 			else
-				echo -e "Files merged: merge.$pos1.vcf.gz generated"
+				echo -e "Files merged: merge.$pos1.vcf generated"
 			fi
-	
-			bedtools intersect -v -a merge.$pos1.vcf -b $chr${i}_notac.bed > merge.${pos1}_ac.vcf
-			bgzip merge.${pos1}_ac.vcf	
-			tabix -p vcf merge.${pos1}_ac.vcf.gz # Tabixing for analysis with PopGenome
 
 			# GENERATION OF MASKED POSITIONS FILE
 
 			MASK_POS=$gpdat/Masks/POS/chr$i.pos_notac.vcf.gz
-			NSAMPLES=$(bcftools query -l merge.${pos1}_ac.vcf.gz | wc -l) # As many samples as merge
+			NSAMPLES=$(bcftools query -l merge.${pos1}.vcf | wc -l) # As many samples as merge
 
 			# awk -v var="chr$i" '$1==var' $maskfile > $MASK\_mask.chr$i.bed # Extract the chromosome of interest from the mask
 			echo -e "Extracting masked coordinates in chr$i:$pos1-$pos2"
-			echo -e "chr$i\t$pos1\t$pos2" > chr${i}_win.bed
-			bedtools subtract -a chr${i}_win.bed -b $maskfile > chr${i}_notac.bed
+			echo -e "chr$i\t$pos1\t$pos2" > chr${i}_win.bed 
+			# We remove -1 from the END column of the bed file because the mask is actually 1-based and the first base is included
+			bedtools subtract -a chr${i}_win.bed -b <(awk -v var="chr$i" -v OFS='\t' '$1==var{print($1,$2-1,$3)}' $maskfile) | sed "s/^chr//" > chr${i}_notac.bed
 
-			time awk -v var="chr$i" '$1==var{S=int($2)+1;E=($3);for(i=S;i<=E;++i) printf("%s %d %d\n",$1,i,i);}' chr${i}_notac.bed | sort | uniq | sort -t ' ' -k1,1 -k2,2n > chr$i.pos_notac.bed
+			awk -v var="$i" '$1==var{S=int($2)+1;E=($3);for(i=S;i<=E;++i) printf("%s %d %d\n",$1,i,i);}' chr${i}_notac.bed | sort | uniq | sort -t ' ' -k1,1 -k2,2n > chr$i.pos_notac.bed
 
 			echo -e "Generating VCF file with masked positions of chr$i:$pos1-$pos2"
-			echo "##fileformat=VCFv4.1\n" > chr$i.pos_notac.vcf
+			echo -e "##fileformat=VCFv4.1" > chr$i.pos_notac.vcf
 			echo '##FORMAT=<ID=GT,Number=1,Type=String,Description="Genotype"' >> chr$i.pos_notac.vcf
-			bcftools view -h merge.$pos1.vcf.gz | grep -v '##' >> chr$i.pos_notac.vcf # Create the header of the file
-			time cat chr$i.pos_notac.bed | while read -a P; do echo -e -n "${P[0]}\t${P[1]}\t.\t" && samtools faidx /ucsc/hg19/hg19.fa "${P[0]}:${P[1]}-${P[1]}"\
+			bcftools view -h merge.$pos1.vcf | grep -v '##' >> chr$i.pos_notac.vcf # Create the header of the file
+			time sed "s/^chr//" chr$i.pos_notac.bed | while read -a P; do echo -e -n "${P[0]}\t${P[1]}\t.\t" && samtools faidx /ucsc/hg19/hg19.fa "chr${P[0]}:${P[1]}-${P[1]}"\
 			| grep -v '>' | awk -v N=$NSAMPLES 'BEGIN{NSAMPLES=N;} {printf("%s\tN\t.\t.\t.\tGT",$0); for(i=1;i<=NSAMPLES;i++) printf("\t./."); printf("\n");}'; done >> chr$i.pos_notac.vcf
 
-			bgzip chr$i.pos_notac.vcf
-			tabix -p vcf chr$i.pos_notac.vcf.gz
-			
-			# Remove not-accessible positions
+			bgzip -f chr$i.pos_notac.vcf; tabix -p vcf chr$i.pos_notac.vcf.gz
+
+			# REMOVE NON-ACCESSIBLE POSITIONS AND MERGE
+
+			bedtools intersect -header -v -a merge.$pos1.vcf -b chr${i}_notac.bed 2> /dev/null > merge.${pos1}_ac.vcf
+
+			bgzip -f merge.${pos1}_ac.vcf; tabix -p vcf merge.${pos1}_ac.vcf.gz 
 
 			bcftools concat --allow-overlaps -Oz -o merge.${pos1}_masked.vcf.gz merge.${pos1}_ac.vcf.gz chr$i.pos_notac.vcf.gz
+			tabix -p vcf merge.${pos1}_masked.vcf.gz
 
 			# R ANALYSIS OF NUCLEOTIDE VARIATION:
 			# PopGenome does not use the first position [left open], so we subtract -1 from its initial position (internal).
 
 			echo merge.$pos1.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP
-			VCFAnalysis.R merge.${pos1}_masked.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
+			VCFAnalysis_sonia.R merge.${pos1}_masked.vcf.gz $chrom $pos1 $pos2 $WINDOW $DB $MKT $POP  # Avoid the message visualization!! 
 
-			rm chr${i}_total.bed chr${i}_notac.bed chr$i.pos_notac.vcf.gz
+			rm chr${i}_win.bed chr${i}_notac.bed chr$i.pos_notac.vcf.gz merge.${pos1}* 
 
 		done
 

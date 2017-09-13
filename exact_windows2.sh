@@ -140,8 +140,6 @@ genome_analysis() {
 			
 		fi
 
-		exit
-
 		# FILTERING SEXUAL CHROMOSOMES
 
 		if [ "$i" == "X" ]; then # Remove MALES from the X chromosome file
@@ -190,9 +188,7 @@ genome_analysis() {
 
 		fi
 
-		exit
-
-		 # DIVERGENCE #
+	    # DIVERGENCE #
 		echo -e "Processing divergence data: chr$i"
 		alnfile=chr$i\_aln.vcf.gz # Alignment file in VCF
 		cd $alndat
@@ -233,7 +229,7 @@ genome_analysis() {
 			# MERGE THE VCF FILES, REPLACING MISSING GENOTYPES
 			# The genome accessibility mask is in exclusive 1-based format, i.e. the last position is not included [half open]. 
 			# Since bcftools assumes inclusive 1-based format [closed], we subtract 1 from the end coordinate.
-			pos2 = $((pos1+$WINDOW-1))
+			pos2=$((pos1+$WINDOW-1))
 			chrom=$i
 			bcftools merge -Oz --missing-to-ref -o merge.$pos1.vcf.gz -r $chrom:$pos1-$pos2 $gpdat/$gpfile $alndat/$alnfile
 

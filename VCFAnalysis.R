@@ -301,24 +301,4 @@ export <- cbind(population=pop,chr=rep(paste(c("chr",chrom),collapse=""),NROW(wi
 write.table(export,file=paste(db,".tab",sep=""),quote=FALSE,sep="\t",row.names=F,append=TRUE, 
 col.names=!file.exists(paste(db,".tab",sep=""))) # Column names written if file does not exist
 
-if("RMySQL" %in% rownames(installed.packages()) == TRUE) {
-
-	suppressMessages(library(DBI))
-	suppressMessages(library(RMySQL))
-	
-	con <- dbConnect(RMySQL::MySQL(),
-        user="roger", password="RM333",
-        dbname="PEGH", host="158.109.215.40")
-
-	first <- !dbExistsTable(con,db)
-
-	dbWriteTable(con,value=export,name=db,row.names=F,append=T)
-
-	if (first == TRUE) # Remove if we want to concatenate various chromosomes
-	dbSendQuery(con,sprintf("ALTER TABLE %s CHANGE COLUMN start start VARCHAR(30);",db))
-	dbSendQuery(con,sprintf("ALTER TABLE %s ADD PRIMARY KEY (start);",db))
-
-	on.exit(dbDisconnect(con))
-}
-
 print(Sys.time() - start.time)
