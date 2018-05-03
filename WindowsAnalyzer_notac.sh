@@ -185,8 +185,8 @@ genome_analysis() {
 
 			fi
 
+			ln -sf $WORKING/Final/gffseq_chr$i.RData $finaldir  # Link to the GFF file		
 			cd $finaldir
-			ln -sf ../gffseq_chr$i.RData . # Link to the GFF file			
 
         fi
 
@@ -251,7 +251,7 @@ genome_analysis() {
 				exit -1
 			fi
 
-			rm chr${i}_win.bed chr${i}_notac.bed merge.${pos1}* # chr$i.pos_notac.vcf.gz 
+			rm chr${i}_win.bed chr${i}_${pos1}_notac.bed merge.${pos1}* # chr$i.pos_notac.vcf.gz 
 
 		done
 
